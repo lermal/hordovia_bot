@@ -1,6 +1,6 @@
 
 # Your testing guild IDs
-GUILD_IDS = []
+GUILD_IDS = [889556917901463602]
 
 # The cogs you don't want to load
 LOAD_EXCEPTIONS = []

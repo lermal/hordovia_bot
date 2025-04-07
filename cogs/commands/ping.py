@@ -9,7 +9,7 @@ class PingCommand(Cog):
     def __init__(self, bot: Bot):
         self.bot = bot
 
-    @slash_command(description="Ping command", force_global=True, dm_permission=True)
+    @slash_command(description="Ping command", force_global=True)
     async def ping(self, interaction: Interaction):
         await interaction.send(f"Pong! {self.bot.latency * 1000:.2f}ms")
 
