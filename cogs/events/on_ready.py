@@ -33,8 +33,12 @@ class OnReady(Cog):
         
         self.bot.logger.info("We have logged in as", self.bot.user)
 
+        await self.bot.init_db()
+        print(f"Загружено {len(self.bot.channel_cache)} каналов из БД")
 
-
+    @commands.Cog.listener("on_shutdown")
+    async def on_shutdown(self):
+        await self.bot.db.close()
 
 def setup(bot: Bot):
     bot.add_cog(OnReady(bot))

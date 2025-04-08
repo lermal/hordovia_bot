@@ -4,6 +4,8 @@ from nextcord import Embed, ApplicationInvokeError, Forbidden, Interaction, Disc
 from nextcord.ext.commands import Bot as NextcordBot
 from datetime import datetime
 import logging
+from database import Database
+
 
 class Bot(NextcordBot):
     def __init__(self, *args, **kwargs):
@@ -12,6 +14,13 @@ class Bot(NextcordBot):
         self.initialised = False
         self.logger = Logger("bot", "logs/bot.log", print_level=logging.DEBUG)
         self.loaded_cogs: dict[str, int] = {} # {cog path: last modified time}
+
+        self.db = Database()
+        self.channel_cache = {}  # {guild_id: (channel_id, category_id)}
+
+    async def init_db(self):
+        await self.db.connect()
+        self.channel_cache = await self.db.load_all_channels()
         
     # Prevents errors from being printed twice
     async def on_application_command_error(self, interaction: Interaction, error: ApplicationInvokeError):
