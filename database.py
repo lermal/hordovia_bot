@@ -25,6 +25,22 @@ class Database:
             )
             """
         )
+        
+        # Создаем таблицу для ролевых реакций
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS role_reactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id INTEGER NOT NULL,
+                channel_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL,
+                emoji TEXT NOT NULL,
+                role_id INTEGER NOT NULL,
+                UNIQUE(message_id, emoji)
+            )
+            """
+        )
+        
         await self.conn.commit()
 
     async def load_all_channels(self):
@@ -39,5 +55,84 @@ class Database:
             VALUES (?, ?, ?)
             """,
             (guild_id, channel_id, category_id)
+        )
+        await self.conn.commit()
+        
+    # Методы для работы с ролевыми реакциями
+    async def add_role_reaction(self, guild_id: int, channel_id: int, message_id: int, emoji: str, role_id: int):
+        """Добавляет новую ролевую реакцию"""
+        try:
+            await self.conn.execute(
+                """
+                INSERT INTO role_reactions 
+                (guild_id, channel_id, message_id, emoji, role_id)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (guild_id, channel_id, message_id, emoji, role_id)
+            )
+            await self.conn.commit()
+            return True
+        except aiosqlite.IntegrityError:
+            # Если такая комбинация message_id и emoji уже существует
+            return False
+
+    async def remove_role_reaction(self, message_id: int, emoji: str):
+        """Удаляет ролевую реакцию"""
+        await self.conn.execute(
+            """
+            DELETE FROM role_reactions 
+            WHERE message_id = ? AND emoji = ?
+            """,
+            (message_id, emoji)
+        )
+        await self.conn.commit()
+        
+    async def get_role_reaction(self, message_id: int, emoji: str):
+        """Получает информацию о ролевой реакции по сообщению и эмодзи"""
+        async with self.conn.execute(
+            """
+            SELECT * FROM role_reactions 
+            WHERE message_id = ? AND emoji = ?
+            """,
+            (message_id, emoji)
+        ) as cursor:
+            return await cursor.fetchone()
+            
+    async def get_all_role_reactions(self):
+        """Получает все ролевые реакции"""
+        async with self.conn.execute("SELECT * FROM role_reactions") as cursor:
+            return [row async for row in cursor]
+            
+    async def get_message_role_reactions(self, message_id: int):
+        """Получает все ролевые реакции для конкретного сообщения"""
+        async with self.conn.execute(
+            """
+            SELECT * FROM role_reactions 
+            WHERE message_id = ?
+            """,
+            (message_id,)
+        ) as cursor:
+            return [row async for row in cursor]
+            
+    async def remove_message_reactions(self, message_id: int):
+        """Удаляет все ролевые реакции для конкретного сообщения"""
+        await self.conn.execute(
+            """
+            DELETE FROM role_reactions 
+            WHERE message_id = ?
+            """,
+            (message_id,)
+        )
+        await self.conn.commit()
+        
+    async def update_role_reaction(self, message_id: int, emoji: str, new_role_id: int):
+        """Обновляет роль для указанной реакции"""
+        await self.conn.execute(
+            """
+            UPDATE role_reactions 
+            SET role_id = ? 
+            WHERE message_id = ? AND emoji = ?
+            """,
+            (new_role_id, message_id, emoji)
         )
         await self.conn.commit()
