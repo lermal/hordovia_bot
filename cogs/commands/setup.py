@@ -1,90 +1,72 @@
-from nextcord import (
-    Interaction,
-    Permissions,
-    slash_command,
-    CategoryChannel,
-    VoiceChannel,
-    Forbidden,
-    HTTPException
-)
-from bot import Bot
+from nextcord import Interaction, Permissions, CategoryChannel, VoiceChannel
 from nextcord.ext.commands import Cog
-from config import GUILD_IDS 
+from nextcord import slash_command
+from database import Database
+from config import GUILD_IDS
 
 class SetupCommand(Cog):
-    def __init__(self, bot: Bot):
+    def __init__(self, bot):
         self.bot = bot
+        self.db = Database()
 
     @slash_command(
-        description="Setup the bot", 
+        name="setup",
+        description="Первоначальная настройка приватных комнат",
         guild_ids=GUILD_IDS,
         default_member_permissions=Permissions(administrator=True)
     )
-    async def setup(self, interaction: Interaction):
+    async def setup_command(self, interaction: Interaction):
+        """Умная настройка системных каналов с проверкой состояний"""
         try:
-            guild = interaction.guild
-            if not guild:
-                return await interaction.response.send_message(
-                    "Команда доступна только на сервере.",
-                    ephemeral=True
-                )
-
-            # Проверка через кеш
-            if guild.id in self.bot.channel_cache:
-                return await interaction.response.send_message(
-                    "Сначала удалите существующие каналы.",
-                    ephemeral=True
-                )
-
-            # Проверка прав бота
-            if not guild.me.guild_permissions.manage_channels:
-                return await interaction.response.send_message(
-                    "Недостаточно прав.",
-                    ephemeral=True
-                )
-
-            # Создание каналов
-            category: CategoryChannel = await guild.create_category(
-                name="Bot System",
-                reason=f"Setup by {interaction.user}"
-            )
+            await self.db.connect()
+            db_data = await self.db.get_guild_channels(interaction.guild.id)
             
-            channel: VoiceChannel = await guild.create_voice_channel(
-                name="bot-channel",
-                category=category,
-                reason=f"Setup by {interaction.user}"
-            )
+            # Проверка существования каналов на сервере
+            existing_category = interaction.guild.get_channel(db_data[1]) if db_data else None
+            existing_channel = interaction.guild.get_channel(db_data[0]) if db_data else None
 
-            # Обновление кеша и БД
-            self.bot.channel_cache[guild.id] = (channel.id, category.id)
-            await self.bot.db.set_channel(guild.id, channel.id, category.id)
-
-            await interaction.response.send_message(
-                f"Система настроена! Канал: {channel.mention}",
-                ephemeral=True
-            )
-
-        except Forbidden:
-            await interaction.response.send_message(
-                "Недостаточно прав!",
-                ephemeral=True
-            )
-        except HTTPException as e:
-            await interaction.response.send_message(
-                f"Ошибка Discord API: {e.text}",
-                ephemeral=True
-            )
-
-    @Cog.listener()
-    async def on_guild_channel_delete(self, channel):
-        if channel.guild.id in self.bot.channel_cache:
-            if channel.id == self.bot.channel_cache[channel.guild.id][0]:
-                del self.bot.channel_cache[channel.guild.id]
-                await self.bot.db.conn.execute(
-                    "DELETE FROM channels WHERE guild_id = ?",
-                    (channel.guild.id,)
+            # Сценарий 1: Каналы существуют и в БД, и на сервере
+            if db_data and existing_category and existing_channel:
+                return await interaction.response.send_message(
+                    f"✅ Система уже настроена! Используйте канал: {existing_channel.mention}",
+                    ephemeral=True
                 )
-                await self.bot.db.conn.commit()
 
-def setup(bot: Bot):
+            # Сценарий 2: Каналы есть в БД, но отсутствуют на сервере
+            if db_data and (not existing_category or not existing_channel):
+                category = await interaction.guild.create_category("🔒 Приватные комнаты")
+                channel = await interaction.guild.create_voice_channel(
+                    "➕ Создать комнату",
+                    category=category
+                )
+                await self.db.update_channel(interaction.guild.id, channel.id, category.id)
+                return await interaction.response.send_message(
+                    f"🔨 Каналы восстановлены! Новый канал: {channel.mention}",
+                    ephemeral=True
+                )
+
+            # Сценарий 3: Полная новая настройка
+            category = await interaction.guild.create_category("🔒 Приватные комнаты")
+            channel = await interaction.guild.create_voice_channel(
+                "➕ Создать комнату",
+                category=category
+            )
+            await self.db.update_channel(interaction.guild.id, channel.id, category.id)
+            await interaction.response.send_message(
+                f"✅ Настройка завершена! Категория: {category.mention}",
+                ephemeral=True
+            )
+
+            # Обновление кэша Voice модуля
+            voice_cog = self.bot.get_cog("Voice")
+            if voice_cog:
+                voice_cog.guild_data[interaction.guild.id] = (channel.id, category.id)
+
+        except Exception as e:
+            await interaction.response.send_message(
+                f"❌ Критическая ошибка: {str(e)}",
+                ephemeral=True
+            )
+
+def setup(bot):
     bot.add_cog(SetupCommand(bot))
