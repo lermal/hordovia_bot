@@ -28,8 +28,6 @@ class SubCommandsCommand(Cog):
     @subcommand2.subcommand(name="subsubcommand2", description="The second sub-subcommand")
     async def subsubcommand2(self, interaction: Interaction):
         await success(interaction, "Hello from sub-subcommand2")
-
-    
     
 
 def setup(bot: Bot):
