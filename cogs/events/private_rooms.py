@@ -7,7 +7,6 @@ import traceback
 from database import Database
 from config import GUILD_IDS
 
-
 class ChannelSettingsDropdown(nextcord.ui.Select):
     def __init__(self, channel, owner):
         self.channel = channel
@@ -58,7 +57,6 @@ class ChannelSettingsDropdown(nextcord.ui.Select):
             await interaction.response.send_message(f"❌ Произошла ошибка: {str(e)}", ephemeral=True)
             traceback.print_exc()
 
-
 class ConfirmButton(nextcord.ui.Button):
     def __init__(self, channel, db):
         self.channel = channel
@@ -67,13 +65,18 @@ class ConfirmButton(nextcord.ui.Button):
 
     async def callback(self, interaction: nextcord.Interaction):
         try:
+            await interaction.response.send_message("✅ Комната будет удалена!", ephemeral=True)
+            
             await self.db.delete_private_room(self.channel.id)
+            
             await self.channel.delete()
-            await interaction.response.send_message("❌ Комната удалена!", ephemeral=True)
+            
         except Exception as e:
-            await interaction.response.send_message(f"❌ Произошла ошибка при удалении: {str(e)}", ephemeral=True)
+            try:
+                await interaction.followup.send(f"❌ Произошла ошибка при удалении: {str(e)}", ephemeral=True)
+            except:
+                print(f"Ошибка при удалении комнаты: {str(e)}")
             traceback.print_exc()
-
 
 class PermissionSettingsDropdown(nextcord.ui.Select):
     def __init__(self, channel, owner):
@@ -255,7 +258,6 @@ class UserSelectDropdown(nextcord.ui.UserSelect):
             await interaction.response.send_message(f"❌ Произошла ошибка: {str(e)}", ephemeral=True)
             traceback.print_exc()
 
-
 class MuteButton(nextcord.ui.Button):
     def __init__(self, channel, user, is_mute):
         self.channel = channel
@@ -276,7 +278,6 @@ class MuteButton(nextcord.ui.Button):
         except Exception as e:
             await interaction.response.send_message(f"❌ Ошибка при управлении микрофоном: {str(e)}", ephemeral=True)
             traceback.print_exc()
-
 
 class DropdownOwn(nextcord.ui.UserSelect):
     def __init__(self, private_voice, user):
@@ -377,7 +378,6 @@ class DropdownOwn(nextcord.ui.UserSelect):
             await interaction.response.send_message(f"❌ Произошла ошибка: {str(e)}", ephemeral=True)
             traceback.print_exc()
 
-
 class EditLim(nextcord.ui.Modal):
     def __init__(self, private_voice, user):
         super().__init__("Изменение лимита")
@@ -476,7 +476,6 @@ class EditName(nextcord.ui.Modal):
         except Exception as e:
             await interaction.response.send_message(f"❌ Произошла ошибка: {str(e)}", ephemeral=True)
             traceback.print_exc()
-
 
 class PrivateRoomsCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -646,7 +645,6 @@ class PrivateRoomsCog(commands.Cog):
             print(f"Ошибка при обработке удаления канала: {str(e)}")
             traceback.print_exc()
 
-
 class SetupModal(nextcord.ui.Modal):
     def __init__(self, bot, db, guild_data):
         super().__init__("Настройка приватных комнат")
@@ -703,7 +701,6 @@ class SetupModal(nextcord.ui.Modal):
         except Exception as e:
             await interaction.response.send_message(f"❌ Произошла ошибка: {str(e)}", ephemeral=True)
             traceback.print_exc()
-
 
 def setup(bot):
     bot.add_cog(PrivateRoomsCog(bot))
