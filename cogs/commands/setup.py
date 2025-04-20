@@ -22,45 +22,37 @@ class SetupCommand(Cog):
             db_data = await self.db.get_guild_channels(interaction.guild.id)
             
             # Проверка существования каналов на сервере
-            existing_category = interaction.guild.get_channel(db_data[1]) if db_data else None
-            existing_channel = interaction.guild.get_channel(db_data[0]) if db_data else None
+            if db_data:
+                create_channel_id, category_id = db_data  # Правильный порядок распаковки
+                existing_category = interaction.guild.get_channel(category_id)
+                existing_channel = interaction.guild.get_channel(create_channel_id)
 
-            # Сценарий 1: Каналы существуют и в БД, и на сервере
-            if db_data and existing_category and existing_channel:
-                return await interaction.response.send_message(
-                    f"✅ Система уже настроена! Используйте канал: {existing_channel.mention}",
-                    ephemeral=True
-                )
+                # Сценарий 1: Каналы существуют и в БД, и на сервере
+                if existing_category and existing_channel:
+                    return await interaction.response.send_message(
+                        f"✅ Система уже настроена! Используйте канал: {existing_channel.mention}",
+                        ephemeral=True
+                    )
 
-            # Сценарий 2: Каналы есть в БД, но отсутствуют на сервере
-            if db_data and (not existing_category or not existing_channel):
-                category = await interaction.guild.create_category("🔒 Приватные комнаты")
-                channel = await interaction.guild.create_voice_channel(
-                    "➕ Создать комнату",
-                    category=category
-                )
-                await self.db.update_channel(interaction.guild.id, channel.id, category.id)
-                return await interaction.response.send_message(
-                    f"🔨 Каналы восстановлены! Новый канал: {channel.mention}",
-                    ephemeral=True
-                )
-
-            # Сценарий 3: Полная новая настройка
+            # Сценарий 2 и 3: Создаем новые каналы
             category = await interaction.guild.create_category("🔒 Приватные комнаты")
             channel = await interaction.guild.create_voice_channel(
                 "➕ Создать комнату",
                 category=category
             )
+            
+            # Сохраняем в том же порядке, что и в private_rooms.py
             await self.db.update_channel(interaction.guild.id, channel.id, category.id)
+            
+            # Обновление кэша PrivateRoomsCog модуля
+            private_rooms_cog = self.bot.get_cog("PrivateRoomsCog")
+            if private_rooms_cog:
+                private_rooms_cog.guild_data[interaction.guild.id] = (channel.id, category.id)
+
             await interaction.response.send_message(
-                f"✅ Настройка завершена! Категория: {category.mention}",
+                f"✅ Настройка завершена! Используйте канал: {channel.mention}",
                 ephemeral=True
             )
-
-            # Обновление кэша Voice модуля
-            voice_cog = self.bot.get_cog("Voice")
-            if voice_cog:
-                voice_cog.guild_data[interaction.guild.id] = (channel.id, category.id)
 
         except Exception as e:
             await interaction.response.send_message(

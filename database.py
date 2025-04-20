@@ -35,6 +35,7 @@ class Database:
         await self.conn.commit()
 
     async def get_guild_channels(self, guild_id: int) -> Optional[Tuple[int, int]]:
+        await self.connect()  # Добавляем подключение
         async with self.conn.execute(
             "SELECT channel_id, category_id FROM channels WHERE guild_id = ?",
             (guild_id,)
@@ -58,11 +59,29 @@ class Database:
         )
         await self.conn.commit()
 
+    async def save_guild_channels(self, data: Tuple[int, int, int]) -> None:
+        """Сохранение данных каналов гильдии"""
+        await self.connect()
+        await self.conn.execute(
+            "INSERT OR REPLACE INTO channels VALUES (?, ?, ?)",
+            data
+        )
+        await self.conn.commit()
+
     async def get_private_room(self, owner_id: int) -> Optional[Tuple]:
         """Получение данных приватной комнаты"""
         async with self.conn.execute(
             "SELECT * FROM privates WHERE ownerid = ?", 
             (owner_id,)
+        ) as cursor:
+            return await cursor.fetchone()
+
+    async def get_private_room_by_channel(self, voice_id: int) -> Optional[Tuple]:
+        """Получение данных приватной комнаты по ID канала"""
+        await self.connect()
+        async with self.conn.execute(
+            "SELECT * FROM privates WHERE voiceid = ?", 
+            (voice_id,)
         ) as cursor:
             return await cursor.fetchone()
 
