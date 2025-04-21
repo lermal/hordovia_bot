@@ -53,6 +53,22 @@ class ChannelSettingsDropdown(nextcord.ui.Select):
                     view=confirmation_view, 
                     ephemeral=True
                 )
+
+            try:
+                async for message in self.channel.history(limit=100):
+                    if (message.author == interaction.guild.me and 
+                        ((message.embeds and message.embeds[0].title == "Управление приватной комнатой"))):
+                        view = View(timeout=None)
+                        view.add_item(ChannelSettingsDropdown(self.channel, self.owner))
+                        view.add_item(PermissionSettingsDropdown(self.channel, self.owner))
+                        
+                        embed = message.embeds[0]
+                        await message.edit(embed=embed, view=view)
+                        break
+
+            except Exception as e:
+                print(f"Ошибка при обновлении меню: {str(e)}")
+                
         except Exception as e:
             await interaction.response.send_message(f"❌ Произошла ошибка: {str(e)}", ephemeral=True)
             traceback.print_exc()
@@ -126,6 +142,18 @@ class PermissionSettingsDropdown(nextcord.ui.Select):
         except Exception as e:
             await interaction.response.send_message(f"❌ Произошла ошибка: {str(e)}", ephemeral=True)
             traceback.print_exc()
+
+        try:
+            async for message in self.channel.history(limit=100):
+                if message.author == interaction.guild.me and "Добро пожаловать" in message.content:
+                    view = View(timeout=None)
+                    view.add_item(ChannelSettingsDropdown(self.channel, self.owner))
+                    view.add_item(PermissionSettingsDropdown(self.channel, self.owner))
+                    await message.edit(view=view)
+                    break
+
+        except Exception as e:
+            print(f"Ошибка при обновлении меню: {str(e)}")
 
     async def toggle_visibility(self, interaction: nextcord.Interaction):
         try:
@@ -351,29 +379,42 @@ class DropdownOwn(nextcord.ui.UserSelect):
                 pass 
             
             try:
+                messages_to_delete = []
                 async for message in self.private_voice.history(limit=100):
                     if (message.author == self.private_voice.guild.me and 
-                        "Добро пожаловать в управление" in message.content):
-                        await message.delete()
-                        break
-            except Exception as e:
-                print(f"Ошибка при удалении старого сообщения: {e}")
+                        ((message.embeds and message.embeds[0].title == "Управление приватной комнатой"))):
+                        messages_to_delete.append(message)
                 
+                if messages_to_delete:
+                    await self.private_voice.delete_messages(messages_to_delete)
+                    
+            except Exception as e:
+                print(f"Ошибка при удалении старых сообщений: {e}")
+                for msg in messages_to_delete:
+                    try:
+                        await msg.delete()
+                    except:
+                        pass
+                    
             try:
                 view = View(timeout=None)
                 view.add_item(ChannelSettingsDropdown(self.private_voice, new_owner))
                 view.add_item(PermissionSettingsDropdown(self.private_voice, new_owner))
-                
-                await self.private_voice.send(
-                    f"👑 {new_owner.mention} стал новым владельцем этой приватной комнаты!",
-                    view=view
+
+                embed = nextcord.Embed(
+                    title="Управление приватной комнатой",
+                    description=f"👋 Добро пожаловать в управление приватной комнатой!\nТекущий владелец: {new_owner.mention}\nИспользуйте выпадающие меню ниже для управления комнатой.",
+                    color=0x2f3136
                 )
+                
+                await self.private_voice.send(embed=embed, view=view)
             except Exception as e:
                 print(f"Ошибка при обновлении интерфейса: {e}")
-                
+                            
         except nextcord.HTTPException as e:
             await interaction.response.send_message(f"❌ Ошибка Discord: {str(e)}", ephemeral=True)
             traceback.print_exc()
+            
         except Exception as e:
             await interaction.response.send_message(f"❌ Произошла ошибка: {str(e)}", ephemeral=True)
             traceback.print_exc()
@@ -582,6 +623,7 @@ class PrivateRoomsCog(commands.Cog):
 
             try:
                 await member.move_to(new_channel)
+
             except Exception as move_err:
                 print(f"[ERROR] Ошибка при перемещении: {str(move_err)}")
 
@@ -590,11 +632,14 @@ class PrivateRoomsCog(commands.Cog):
             view.add_item(PermissionSettingsDropdown(new_channel, member))
             
             try:
-                await new_channel.send(
-                    f"👋 Добро пожаловать в управление вашей приватной комнатой, {member.mention}!\n"
-                    f"Используйте выпадающие меню ниже для управления комнатой.",
-                    view=view
+                embed = nextcord.Embed(
+                    title="Управление приватной комнатой", 
+                    description=f"👋 Добро пожаловать в управление вашей приватной комнатой, {member.mention}!\n"
+                            f"Используйте выпадающие меню ниже для управления комнатой.",
+                    color=0x2f3136
                 )
+                
+                await new_channel.send(embed=embed, view=view)
             except Exception as msg_err:
                 print(f"[ERROR] Ошибка отправки сообщения: {str(msg_err)}")
 
