@@ -18,9 +18,15 @@ class Bot(NextcordBot):
         self.db = Database()
         self.channel_cache = {}  # {guild_id: (channel_id, category_id)}
 
+    async def on_ready(self):
+        """Вызывается при готовности бота"""
+        await self.init_db()
+        self.initialised = True
+        print(f"Бот {self.user.name} готов к работе!")
+
     async def init_db(self):
         await self.db.connect()
-        self.channel_cache = await self.db.load_all_channels()
+        self.channel_cache = {}  # Инициализируем пустой словарь вместо вызова несуществующего метода
         
     # Prevents errors from being printed twice
     async def on_application_command_error(self, interaction: Interaction, error: ApplicationInvokeError):

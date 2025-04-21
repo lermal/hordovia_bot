@@ -86,6 +86,7 @@ class Database:
 
     async def get_private_room(self, owner_id: int) -> Optional[Tuple]:
         """Получение данных приватной комнаты"""
+        await self.connect()
         async with self.conn.execute(
             "SELECT * FROM privates WHERE ownerid = ?", 
             (owner_id,)
@@ -103,6 +104,7 @@ class Database:
 
     async def update_private_room(self, data: Tuple) -> None:
         """Обновление данных приватной комнаты"""
+        await self.connect()
         await self.conn.execute(
             "INSERT OR REPLACE INTO privates VALUES (?, ?, ?, ?, ?)",
             data
@@ -111,6 +113,7 @@ class Database:
 
     async def delete_private_room(self, voice_id: int) -> None:
         """Удаление приватной комнаты"""
+        await self.connect()
         await self.conn.execute(
             "DELETE FROM privates WHERE voiceid = ?",
             (voice_id,)
@@ -119,6 +122,7 @@ class Database:
 
     async def transfer_rights(self, new_owner_id: int, private_voice_id: int) -> None:
         """Передача прав на приватную комнату"""
+        await self.connect()
         # Сначала получаем текущие данные о комнате
         async with self.conn.execute(
             "SELECT * FROM privates WHERE voiceid = ?", 
@@ -138,15 +142,17 @@ class Database:
 
     async def delete_private_room_by_owner(self, owner_id: int) -> None:
         """Удаление приватной комнаты по ID владельца"""
+        await self.connect()
         await self.conn.execute(
             "DELETE FROM privates WHERE ownerid = ? AND ownerid != perms",
             (owner_id,)
         )
         await self.conn.commit()
-
+        
     # Методы для работы с ролевыми реакциями
     async def add_role_reaction(self, guild_id: int, channel_id: int, message_id: int, emoji: str, role_id: int):
         """Добавляет новую ролевую реакцию"""
+        await self.connect()
         try:
             await self.conn.execute(
                 """
@@ -164,6 +170,7 @@ class Database:
 
     async def remove_role_reaction(self, message_id: int, emoji: str):
         """Удаляет ролевую реакцию"""
+        await self.connect()
         await self.conn.execute(
             """
             DELETE FROM role_reactions 
@@ -175,6 +182,7 @@ class Database:
         
     async def get_role_reaction(self, message_id: int, emoji: str):
         """Получает информацию о ролевой реакции по сообщению и эмодзи"""
+        await self.connect()
         async with self.conn.execute(
             """
             SELECT * FROM role_reactions 
@@ -186,11 +194,13 @@ class Database:
             
     async def get_all_role_reactions(self):
         """Получает все ролевые реакции"""
+        await self.connect()
         async with self.conn.execute("SELECT * FROM role_reactions") as cursor:
             return [row async for row in cursor]
             
     async def get_message_role_reactions(self, message_id: int):
         """Получает все ролевые реакции для конкретного сообщения"""
+        await self.connect()
         async with self.conn.execute(
             """
             SELECT * FROM role_reactions 
@@ -202,6 +212,7 @@ class Database:
             
     async def remove_message_reactions(self, message_id: int):
         """Удаляет все ролевые реакции для конкретного сообщения"""
+        await self.connect()
         await self.conn.execute(
             """
             DELETE FROM role_reactions 
@@ -213,6 +224,7 @@ class Database:
         
     async def update_role_reaction(self, message_id: int, emoji: str, new_role_id: int):
         """Обновляет роль для указанной реакции"""
+        await self.connect()
         await self.conn.execute(
             """
             UPDATE role_reactions 
