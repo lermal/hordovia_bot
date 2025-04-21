@@ -625,7 +625,7 @@ class PrivateRoomsCog(commands.Cog):
                 raise ValueError("Категория не найдена")
 
             new_channel = await guild.create_voice_channel(
-                name=f"Комната {member.display_name}",
+                name=f"Борщерум {member.display_name}",
                 category=category,
                 overwrites={
                     guild.default_role: nextcord.PermissionOverwrite(view_channel=True, connect=False),
