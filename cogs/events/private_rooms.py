@@ -531,7 +531,33 @@ class PrivateRoomsCog(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self):
         await self.init_db()
-        self.guild_data = {}  
+        self.guild_data = {}
+        
+        try:
+            await self.db.connect()
+            private_rooms = await self.db.get_all_private_rooms()
+            
+            for room in private_rooms:
+                if room:
+                    owner_id, voice_name, voice_limit, voice_id, perms = room
+                    channel = self.bot.get_channel(voice_id)
+                    
+                    if not channel or (isinstance(channel, nextcord.VoiceChannel) and len(channel.members) == 0):
+                        await self.db.delete_private_room(voice_id)
+                        
+                        if channel:
+                            try:
+                                await channel.delete()
+                                print(f"[CLEANUP] Удалена пустая комната: {voice_name} (ID: {voice_id})")
+                            except Exception as del_err:
+                                print(f"[ERROR] Не удалось удалить канал {voice_name}: {del_err}")
+                        else:
+                            print(f"[CLEANUP] Удалена запись о несуществующей комнате: {voice_name} (ID: {voice_id})")
+        
+        except Exception as e:
+            print(f"[ERROR] Ошибка при очистке пустых каналов: {str(e)}")
+            traceback.print_exc()
+            
         for guild_id in GUILD_IDS:
             try:
                 data = await self.db.get_guild_channels(guild_id)
@@ -542,6 +568,7 @@ class PrivateRoomsCog(commands.Cog):
                     print(f"Для гильдии {guild_id} выполните /setup")
             except Exception as e:
                 print(f"Ошибка при инициализации данных для гильдии {guild_id}: {str(e)}")
+                
         print("Модуль приватных комнат готов!")
 
     @commands.Cog.listener()

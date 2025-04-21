@@ -222,3 +222,9 @@ class Database:
             (new_role_id, message_id, emoji)
         )
         await self.conn.commit()
+
+    async def get_all_private_rooms(self) -> list:
+        """Получение всех приватных комнат"""
+        await self.connect()
+        async with self.conn.execute("SELECT * FROM privates") as cursor:
+            return await cursor.fetchall()
