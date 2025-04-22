@@ -5,6 +5,9 @@ from nextcord.ext.commands import Cog
 import json
 import os
 import asyncio
+from logger import setup_logger
+
+logger = setup_logger()
 
 class AddStreamerModal(ui.Modal):
     def __init__(self, callback):
@@ -157,7 +160,7 @@ class TwitchCommands(Cog):
                 with open(path, "r", encoding="utf-8") as f:
                     self.avatar_cache = json.load(f)
             except Exception as e:
-                print(f"Twitch: Ошибка при загрузке кэша аватарок: {e}")
+                logger.error(f"Twitch: Ошибка при загрузке кэша аватарок: {e}")
                 self.avatar_cache = {}
                 
     def save_avatar_cache(self):
@@ -166,7 +169,7 @@ class TwitchCommands(Cog):
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(self.avatar_cache, f, ensure_ascii=False, indent=4)
         except Exception as e:
-            print(f"Twitch: Ошибка при сохранении кэша аватарок: {e}")
+            logger.error(f"Twitch: Ошибка при сохранении кэша аватарок: {e}")
             
     async def get_user_avatar(self, login):
         """Получить URL аватарки стримера по логину с кэшированием"""
@@ -184,7 +187,7 @@ class TwitchCommands(Cog):
                     return avatar_url
             return None
         except Exception as e:
-            print(f"Twitch: Ошибка при получении аватарки: {e}")
+            logger.error(f"Twitch: Ошибка при получении аватарки: {e}")
             return None
             
     @slash_command(
@@ -347,7 +350,7 @@ class TwitchCommands(Cog):
                 view = StreamerActionsView(self, self.streamers, selected=streamer)
                 await message.edit(embed=embed, view=view)
         except Exception as e:
-            print(f"Не удалось удалить уведомление: {e}")
+            logger.error(f"Не удалось удалить уведомление: {e}")
 
 def setup(bot: Bot):
     bot.add_cog(TwitchCommands(bot)) 

@@ -22,7 +22,6 @@ class Bot(NextcordBot):
         """Вызывается при готовности бота"""
         await self.init_db()
         self.initialised = True
-        print(f"Бот {self.user.name} готов к работе!")
 
     async def init_db(self):
         await self.db.connect()

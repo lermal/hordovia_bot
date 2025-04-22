@@ -1,10 +1,13 @@
 from nextcord.ext import commands
+from logger import setup_logger
 from database import Database
 from nextcord.ui import View
 from config import GUILD_IDS
 import traceback
 import nextcord
 import asyncio
+
+logger = setup_logger()
 
 class ChannelSettingsDropdown(nextcord.ui.Select):
     def __init__(self, channel, owner):
@@ -66,7 +69,7 @@ class ChannelSettingsDropdown(nextcord.ui.Select):
                         break
 
             except Exception as e:
-                print(f"Ошибка при обновлении меню: {str(e)}")
+                logger.error(f"Ошибка при обновлении меню: {str(e)}")
                 
         except Exception as e:
             await interaction.response.send_message(f"❌ Произошла ошибка: {str(e)}", ephemeral=True)
@@ -90,7 +93,7 @@ class ConfirmButton(nextcord.ui.Button):
             try:
                 await interaction.followup.send(f"❌ Произошла ошибка при удалении: {str(e)}", ephemeral=True)
             except:
-                print(f"Ошибка при удалении комнаты: {str(e)}")
+                logger.error(f"Ошибка при удалении комнаты: {str(e)}")
             traceback.print_exc()
 
 class PermissionSettingsDropdown(nextcord.ui.Select):
@@ -156,7 +159,7 @@ class PermissionSettingsDropdown(nextcord.ui.Select):
                     break
 
         except Exception as e:
-            print(f"Ошибка при обновлении меню: {str(e)}")
+            logger.error(f"Ошибка при обновлении меню: {str(e)}")
 
     async def toggle_visibility(self, interaction: nextcord.Interaction):
         try:
@@ -399,7 +402,7 @@ class DropdownOwn(nextcord.ui.UserSelect):
                     await self.private_voice.delete_messages(messages_to_delete)
                     
             except Exception as e:
-                print(f"Ошибка при удалении старых сообщений: {e}")
+                logger.error(f"Ошибка при удалении старых сообщений: {e}")
                 for msg in messages_to_delete:
                     try:
                         await msg.delete()
@@ -419,7 +422,7 @@ class DropdownOwn(nextcord.ui.UserSelect):
                 
                 await self.private_voice.send(embed=embed, view=view)
             except Exception as e:
-                print(f"Ошибка при обновлении интерфейса: {e}")
+                logger.error(f"Ошибка при обновлении интерфейса: {e}")
                             
         except nextcord.HTTPException as e:
             await interaction.response.send_message(f"❌ Ошибка Discord: {str(e)}", ephemeral=True)
@@ -559,14 +562,14 @@ class PrivateRoomsCog(commands.Cog):
                         if channel:
                             try:
                                 await channel.delete()
-                                print(f"[CLEANUP] Удалена пустая комната: {voice_name} (ID: {voice_id})")
+                                logger.info(f"Удалена пустая комната: {voice_name} (ID: {voice_id})")
                             except Exception as del_err:
-                                print(f"[ERROR] Не удалось удалить канал {voice_name}: {del_err}")
+                                logger.error(f"Не удалось удалить канал {voice_name}: {del_err}")
                         else:
-                            print(f"[CLEANUP] Удалена запись о несуществующей комнате: {voice_name} (ID: {voice_id})")
+                            logger.info(f"[CLEANUP] Удалена запись о несуществующей комнате: {voice_name} (ID: {voice_id})")
         
         except Exception as e:
-            print(f"[ERROR] Ошибка при очистке пустых каналов: {str(e)}")
+            logger.error(f"Ошибка при очистке пустых каналов: {str(e)}")
             traceback.print_exc()
             
         for guild_id in GUILD_IDS:
@@ -574,13 +577,13 @@ class PrivateRoomsCog(commands.Cog):
                 data = await self.db.get_guild_channels(guild_id)
                 if data:
                     self.guild_data[guild_id] = data
-                    print(f"Загружены данные для гильдии {guild_id}: {data}")
+                    logger.info(f"Загружены данные для гильдии {guild_id}: {data}")
                 else:
-                    print(f"Для гильдии {guild_id} выполните /setup")
+                    logger.info(f"Для гильдии {guild_id} выполните /setup")
             except Exception as e:
-                print(f"Ошибка при инициализации данных для гильдии {guild_id}: {str(e)}")
+                logger.error(f"Ошибка при инициализации данных для гильдии {guild_id}: {str(e)}")
                 
-        print("Модуль приватных комнат готов!")
+        logger.info("Модуль приватных комнат готов!")
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: nextcord.Member, before: nextcord.VoiceState, after: nextcord.VoiceState):
@@ -594,20 +597,20 @@ class PrivateRoomsCog(commands.Cog):
             guild_data = await self.db.get_guild_channels(guild_id)
             
             if not guild_data:
-                print(f"Данные не найдены для гильдии {guild_id}. Используйте /setup")
+                logger.info(f"Данные не найдены для гильдии {guild_id}. Используйте /setup")
                 return
                 
             create_channel_id, category_id = guild_data
             
             if after.channel and after.channel.id == create_channel_id: 
-                print(f"Пользователь {member.name} подключился к каналу создания")
+                logger.info(f"Пользователь {member.name} подключился к каналу создания")
                 await self.create_private_room(member, category_id)
 
             if before.channel and before.channel.id != create_channel_id: 
                 await self.cleanup_old_room(before.channel, create_channel_id)
                 
         except Exception as e:
-            print(f"Ошибка в обработчике голосового статуса: {str(e)}")
+            logger.error(f"Ошибка в обработчике голосового статуса: {str(e)}")
             traceback.print_exc()
 
     async def create_private_room(self, member: nextcord.Member, category_id: int):
@@ -625,7 +628,7 @@ class PrivateRoomsCog(commands.Cog):
                         return
                     
                     except Exception as move_error:
-                        print(f"[ERROR] Ошибка при перемещении: {str(move_error)}")
+                        logger.error(f"Ошибка при перемещении: {str(move_error)}")
                         await self.db.delete_private_room(voice_id)
                 else:
                     await self.db.delete_private_room(voice_id)
@@ -664,7 +667,7 @@ class PrivateRoomsCog(commands.Cog):
                 await member.move_to(new_channel)
 
             except Exception as move_err:
-                print(f"[ERROR] Ошибка при перемещении: {str(move_err)}")
+                logger.error(f"Ошибка при перемещении: {str(move_err)}")
 
             view = View(timeout=None)
             view.add_item(ChannelSettingsDropdown(new_channel, member))
@@ -680,12 +683,12 @@ class PrivateRoomsCog(commands.Cog):
                 
                 await new_channel.send(embed=embed, view=view)
             except Exception as msg_err:
-                print(f"[ERROR] Ошибка отправки сообщения: {str(msg_err)}")
+                logger.error(f"Ошибка отправки сообщения: {str(msg_err)}")
 
-            print(f"[INFO] Создана комната для {member.display_name}")
+            logger.info(f"Создана комната для {member.display_name}")
 
         except Exception as e:
-            print(f"[ERROR] Критическая ошибка в create_private_room: {str(e)}")
+            logger.error(f"Критическая ошибка в create_private_room: {str(e)}")
             raise
 
     async def cleanup_old_room(self, channel: nextcord.VoiceChannel, create_chan_id: int):
@@ -700,14 +703,14 @@ class PrivateRoomsCog(commands.Cog):
             if len(channel.members) == 0:
                 await self.db.delete_private_room(channel.id)
                 await channel.delete()
-                print(f"Удалена пустая комната: {channel.name}")
+                logger.info(f"Удалена пустая комната: {channel.name}")
                 
         except nextcord.HTTPException as e:
-            print(f"Ошибка при удалении комнаты: {str(e)}")
+            logger.error(f"Ошибка при удалении комнаты: {str(e)}")
             traceback.print_exc()
 
         except Exception as e:
-            print(f"Непредвиденная ошибка: {str(e)}")
+            logger.error(f"Непредвиденная ошибка: {str(e)}")
             traceback.print_exc()
 
     @commands.Cog.listener()
@@ -720,15 +723,15 @@ class PrivateRoomsCog(commands.Cog):
                 if data and deleted_channel.id in data:
                     await self.db.delete_guild_channels(guild_id)
                     self.guild_data.pop(guild_id, None)
-                    print(f"Автосброс настроек для гильдии {guild_id}")
+                    logger.info(f"Автосброс настроек для гильдии {guild_id}")
                     
                 room_data = await self.db.get_private_room_by_channel(deleted_channel.id)
                 if room_data:
                     await self.db.delete_private_room(deleted_channel.id)
-                    print(f"Удален приватный канал из БД: {deleted_channel.name}")
+                    logger.info(f"Удален приватный канал из БД: {deleted_channel.name}")
 
         except Exception as e:
-            print(f"Ошибка при обработке удаления канала: {str(e)}")
+            logger.error(f"Ошибка при обработке удаления канала: {str(e)}")
             traceback.print_exc()
 
 class SetupModal(nextcord.ui.Modal):
