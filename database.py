@@ -4,7 +4,7 @@ from typing import Optional, Tuple
 
 class Database:
     def __init__(self):
-        self.db_path = Path("bot_data.db")
+        self.db_path = Path("./data/database.db")
         self.conn: Optional[aiosqlite.Connection] = None
 
     async def connect(self) -> None:
