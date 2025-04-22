@@ -16,17 +16,14 @@ def get_cogs() -> list:
     return cogs
 
 def main():
-    # Настройка логов
     if not os.path.exists("logs"):
         os.mkdir("logs")
     
     logger = setup_logger()
     
-    # Инициализация бота
     bot = Bot(intents=nextcord.Intents.all())
     bot.logger = logger
     
-    # Загрузка переменных окружения
     load_dotenv()
     token = os.getenv("TOKEN")
     
@@ -34,10 +31,9 @@ def main():
         bot.logger.critical("Токен не найден в .env файле!")
         exit(1)
     
-    # Автозагрузка когов
-    load_errors = False  # Флаг для отслеживания ошибок загрузки
+    load_errors = False 
     
-    for cog in get_cogs():  # Динамическое получение списка
+    for cog in get_cogs():  
         try:
             bot.load_extension(cog)
             bot.logger.info(f"Успешно загружен ког: {cog}")
@@ -45,11 +41,9 @@ def main():
             load_errors = True
             bot.logger.error(f"Ошибка загрузки кога {cog}: {str(e)}")
     
-    # Выводим итоговое сообщение только если все коги загрузились успешно
     if not load_errors:
         bot.logger.info("Все коги успешно загружены!")
     
-    # Запуск бота
     try:
         bot.run(token)
     except nextcord.LoginFailure:
