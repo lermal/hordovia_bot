@@ -17,6 +17,9 @@ from nextcord import (
 from nextcord.ext.commands import Cog
 import json
 import asyncio
+from logger import setup_logger
+
+logger = setup_logger()
 
 # Модальное окно для ввода ID сообщения
 class AddMessageModal(ui.Modal):
@@ -146,7 +149,7 @@ class MessageSelectView(ui.View):
                 # Обновляем сообщение
                 await original_message.edit(view=view)
             except Exception as e:
-                print(f"Не удалось обновить интерфейс: {e}")
+                logger.error(f"Не удалось обновить интерфейс: {e}")
                 
             return
         
@@ -345,7 +348,7 @@ class RemoveReactionView(ui.View):
             if events_cog:
                 await events_cog.update_cache(self.message_id, emoji, None)
         except Exception as e:
-            print(f"Не удалось обновить кэш реакций: {e}")
+            logger.error(f"Не удалось обновить кэш реакций: {e}")
         
         # Находим сообщение
         message = None
@@ -383,7 +386,7 @@ class RemoveReactionView(ui.View):
             embed.set_footer(text="")
             await original_message.edit(embed=embed)
         except Exception as e:
-            print(f"Ошибка при обновлении уведомления: {e}")
+            logger.error(f"Ошибка при обновлении уведомления: {e}")
             pass
 
 # View для изменения роли у реакции
@@ -462,21 +465,21 @@ class ConfirmDeleteView(ui.View):
             await self.cog.show_message_reactions(interaction, self.message_id)
         elif action == "confirm":
             # Логируем состояние кэша до удаления
-            print(f"Кэш до удаления: {self.cog.message_cache}")
-            print(f"Удаляемое сообщение ID: {self.message_id}")
+            logger.info(f"Кэш до удаления: {self.cog.message_cache}")
+            logger.info(f"Удаляемое сообщение ID: {self.message_id}")
             
             # Удаляем все реакции для этого сообщения
             await self.cog.delete_message_reactions(interaction, self.message_id)
             
             # Обновляем кэш сообщений в коге
             if self.message_id in self.cog.message_cache:
-                print(f"Удаляем сообщение {self.message_id} из кэша")
+                logger.info(f"Удаляем сообщение {self.message_id} из кэша")
                 del self.cog.message_cache[self.message_id]
             else:
-                print(f"Сообщение {self.message_id} не найдено в кэше")
+                logger.info(f"Сообщение {self.message_id} не найдено в кэше")
                 
             # Логируем состояние кэша после удаления
-            print(f"Кэш после удаления: {self.cog.message_cache}")
+            logger.info(f"Кэш после удаления: {self.cog.message_cache}")
             
             # Возвращаемся к списку сообщений с обновленным интерфейсом
             view = MessageSelectView(self.cog)
@@ -495,7 +498,7 @@ class ConfirmDeleteView(ui.View):
                 original_message = await interaction.original_message()
                 await original_message.edit(embed=embed)
             except Exception as e:
-                print(f"Ошибка при обновлении сообщения: {e}")
+                logger.error(f"Ошибка при обновлении сообщения: {e}")
                 pass
 
 # View для изменения роли у реакции
@@ -536,7 +539,7 @@ class RoleReactionsCommands(Cog):
         # Ждем, пока база данных будет инициализирована
         while not self.bot.db.conn:
             await asyncio.sleep(1)
-            print("Ожидание инициализации БД...")
+            logger.info("Ожидание инициализации БД...")
             
         try:
             reactions = await self.bot.db.get_all_role_reactions()
@@ -547,9 +550,9 @@ class RoleReactionsCommands(Cog):
                 
                 self.message_cache[message_id] = channel_id
                 
-            print(f"Загружено {len(self.message_cache)} сообщений с реакциями")
+            logger.info(f"Загружено {len(self.message_cache)} сообщений с реакциями")
         except Exception as e:
-            print(f"Ошибка при загрузке сообщений с реакциями: {e}")
+            logger.error(f"Ошибка при загрузке сообщений с реакциями: {e}")
     
     @slash_command(
         name="role_reaction",
@@ -680,7 +683,7 @@ class RoleReactionsCommands(Cog):
             if events_cog:
                 await events_cog.update_cache(message_id, emoji, role_id)
         except Exception as e:
-            print(f"Не удалось обновить кэш реакций: {e}")
+            logger.error(f"Не удалось обновить кэш реакций: {e}")
         
         # Обновляем сообщение
         embed = await self.create_message_info_embed(interaction.guild, message_id)
@@ -734,7 +737,7 @@ class RoleReactionsCommands(Cog):
                     if events_cog:
                         await events_cog.update_cache(message_id, emoji, None)
                 except Exception as e:
-                    print(f"Не удалось обновить кэш реакций: {e}")
+                    logger.error(f"Не удалось обновить кэш реакций: {e}")
             
             # Удаляем все реакции из базы данных
             await self.bot.db.remove_message_reactions(message_id)
@@ -742,7 +745,7 @@ class RoleReactionsCommands(Cog):
             # Сообщение будет удалено из кэша в confirm_delete
             
         except Exception as e:
-            print(f"Ошибка при удалении реакций сообщения: {e}")
+            logger.error(f"Ошибка при удалении реакций сообщения: {e}")
             await interaction.response.send_message(f"❌ Ошибка при удалении сообщения: {str(e)}", ephemeral=True)
     
     async def edit_role_callback(self, interaction: Interaction, message_id: int, emoji: str, new_role_id: int, old_role_id: int):
@@ -785,7 +788,7 @@ class RoleReactionsCommands(Cog):
                     )
                     await self.bot.db.conn.commit()
             except Exception as e:
-                print(f"Ошибка при обновлении БД: {e}")
+                logger.error(f"Ошибка при обновлении БД: {e}")
                 await interaction.response.send_message(f"❌ Ошибка при обновлении роли в БД: {str(e)}", ephemeral=True)
                 return
             
@@ -795,7 +798,7 @@ class RoleReactionsCommands(Cog):
                 if events_cog:
                     await events_cog.update_cache(message_id, emoji, new_role_id)
             except Exception as e:
-                print(f"Не удалось обновить кэш реакций: {e}")
+                logger.error(f"Не удалось обновить кэш реакций: {e}")
             
             # Получаем пользователей, у которых стоит эта реакция
             users_with_reaction = []
@@ -822,7 +825,7 @@ class RoleReactionsCommands(Cog):
                         await member.add_roles(new_role, reason="Обновление роли по реакции")
                         updated_users_count += 1
                     except Exception as e:
-                        print(f"Ошибка при обновлении ролей пользователя {user.id}: {e}")
+                        logger.error(f"Ошибка при обновлении ролей пользователя {user.id}: {e}")
             
             # Обновляем интерфейс
             embed = await self.create_message_info_embed(interaction.guild, message_id)
@@ -841,7 +844,7 @@ class RoleReactionsCommands(Cog):
                 pass
             
         except Exception as e:
-            print(f"Ошибка при изменении роли: {e}")
+            logger.error(f"Ошибка при изменении роли: {e}")
             await interaction.response.send_message(f"❌ Ошибка при изменении роли: {str(e)}", ephemeral=True)
 
 def setup(bot: Bot):

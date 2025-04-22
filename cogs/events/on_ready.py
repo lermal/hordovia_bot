@@ -13,7 +13,7 @@ class OnReady(Cog):
                 name="/setup для настройки"
             )
         )
-        self.bot.logger.info(f"Бот запущен как {self.bot.user}")
+        self.bot.logger.info(f"{self.bot.user} - Успешно запущен и готов к работе!")
 
 def setup(bot):
     bot.add_cog(OnReady(bot))

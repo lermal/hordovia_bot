@@ -3,7 +3,7 @@ from bot import Bot
 import nextcord
 from dotenv import load_dotenv
 import os
-import logging
+from logger import setup_logger
 
 def get_cogs() -> list:
     """Автоматически находит все коги в папке cogs"""
@@ -20,18 +20,11 @@ def main():
     if not os.path.exists("logs"):
         os.mkdir("logs")
     
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        handlers=[
-            logging.FileHandler("logs/bot.log"),
-            logging.StreamHandler()
-        ]
-    )
+    logger = setup_logger()
     
     # Инициализация бота
     bot = Bot(intents=nextcord.Intents.all())
-    bot.logger = logging.getLogger("bot")
+    bot.logger = logger
     
     # Загрузка переменных окружения
     load_dotenv()
@@ -42,12 +35,19 @@ def main():
         exit(1)
     
     # Автозагрузка когов
+    load_errors = False  # Флаг для отслеживания ошибок загрузки
+    
     for cog in get_cogs():  # Динамическое получение списка
         try:
             bot.load_extension(cog)
             bot.logger.info(f"Успешно загружен ког: {cog}")
         except Exception as e:
+            load_errors = True
             bot.logger.error(f"Ошибка загрузки кога {cog}: {str(e)}")
+    
+    # Выводим итоговое сообщение только если все коги загрузились успешно
+    if not load_errors:
+        bot.logger.info("Все коги успешно загружены!")
     
     # Запуск бота
     try:
