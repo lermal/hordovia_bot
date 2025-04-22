@@ -169,4 +169,4 @@ cython_debug/
 ./images/passports/*.png
 
 # Data
-./data/*.json
+/data/
