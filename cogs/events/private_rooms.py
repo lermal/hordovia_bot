@@ -139,17 +139,21 @@ class PermissionSettingsDropdown(nextcord.ui.Select):
                 
             elif self.values[0] == "Доступ для всех":
                 await self.toggle_access_for_all(interaction)
+
         except Exception as e:
             await interaction.response.send_message(f"❌ Произошла ошибка: {str(e)}", ephemeral=True)
             traceback.print_exc()
 
         try:
             async for message in self.channel.history(limit=100):
-                if message.author == interaction.guild.me and "Добро пожаловать" in message.content:
+                if (message.author == interaction.guild.me and 
+                    ((message.embeds and message.embeds[0].title == "Управление приватной комнатой"))):
                     view = View(timeout=None)
                     view.add_item(ChannelSettingsDropdown(self.channel, self.owner))
                     view.add_item(PermissionSettingsDropdown(self.channel, self.owner))
-                    await message.edit(view=view)
+                    
+                    embed = message.embeds[0]
+                    await message.edit(embed=embed, view=view)
                     break
 
         except Exception as e:
@@ -174,6 +178,7 @@ class PermissionSettingsDropdown(nextcord.ui.Select):
             
             message = f"✅ Канал теперь {'виден' if new_view else 'скрыт'} для всех пользователей"
             await interaction.response.send_message(message, ephemeral=True)
+
         except Exception as e:
             await interaction.response.send_message(f"❌ Ошибка при изменении видимости: {str(e)}", ephemeral=True)
             traceback.print_exc()
@@ -197,6 +202,7 @@ class PermissionSettingsDropdown(nextcord.ui.Select):
             
             message = f"✅ Комната теперь {'открыта' if new_connect else 'закрыта'} для всех пользователей"
             await interaction.response.send_message(message, ephemeral=True)
+
         except Exception as e:
             await interaction.response.send_message(f"❌ Ошибка при изменении доступа: {str(e)}", ephemeral=True)
             traceback.print_exc()
@@ -229,6 +235,7 @@ class UserSelectDropdown(nextcord.ui.UserSelect):
                 await self.kick_user(interaction, selected_user)
             elif self.action_type == "mute":
                 await self.show_mute_options(interaction, selected_user)
+
         except Exception as e:
             await interaction.response.send_message(f"❌ Произошла ошибка: {str(e)}", ephemeral=True)
             traceback.print_exc()
@@ -253,6 +260,7 @@ class UserSelectDropdown(nextcord.ui.UserSelect):
             
             message = f"✅ {user.mention} теперь {'имеет' if new_connect else 'не имеет'} доступ к комнате"
             await interaction.response.send_message(message, ephemeral=True)
+
         except Exception as e:
             await interaction.response.send_message(f"❌ Ошибка при изменении доступа: {str(e)}", ephemeral=True)
             traceback.print_exc()
@@ -264,6 +272,7 @@ class UserSelectDropdown(nextcord.ui.UserSelect):
                 
             await user.move_to(None)
             await interaction.response.send_message(f"✅ {user.mention} был исключен из комнаты", ephemeral=True)
+
         except Exception as e:
             await interaction.response.send_message(f"❌ Ошибка при исключении пользователя: {str(e)}", ephemeral=True)
             traceback.print_exc()
@@ -282,6 +291,7 @@ class UserSelectDropdown(nextcord.ui.UserSelect):
                 view=view, 
                 ephemeral=True
             )
+
         except Exception as e:
             await interaction.response.send_message(f"❌ Произошла ошибка: {str(e)}", ephemeral=True)
             traceback.print_exc()
@@ -303,6 +313,7 @@ class MuteButton(nextcord.ui.Button):
             
             message = f"✅ {self.user.mention} был {'замучен' if self.is_mute else 'размучен'}"
             await interaction.response.send_message(message, ephemeral=True)
+
         except Exception as e:
             await interaction.response.send_message(f"❌ Ошибка при управлении микрофоном: {str(e)}", ephemeral=True)
             traceback.print_exc()
@@ -514,6 +525,7 @@ class EditName(nextcord.ui.Modal):
                 f"✅ Название комнаты изменено на: **{new_name}**", 
                 ephemeral=True
             )
+
         except Exception as e:
             await interaction.response.send_message(f"❌ Произошла ошибка: {str(e)}", ephemeral=True)
             traceback.print_exc()
@@ -612,6 +624,7 @@ class PrivateRoomsCog(commands.Cog):
                     try:
                         await member.move_to(voice_channel)
                         return
+                    
                     except Exception as move_error:
                         print(f"[ERROR] Ошибка при перемещении: {str(move_error)}")
                         await self.db.delete_private_room(voice_id)
@@ -693,6 +706,7 @@ class PrivateRoomsCog(commands.Cog):
         except nextcord.HTTPException as e:
             print(f"Ошибка при удалении комнаты: {str(e)}")
             traceback.print_exc()
+
         except Exception as e:
             print(f"Непредвиденная ошибка: {str(e)}")
             traceback.print_exc()
@@ -713,6 +727,7 @@ class PrivateRoomsCog(commands.Cog):
                 if room_data:
                     await self.db.delete_private_room(deleted_channel.id)
                     print(f"Удален приватный канал из БД: {deleted_channel.name}")
+
         except Exception as e:
             print(f"Ошибка при обработке удаления канала: {str(e)}")
             traceback.print_exc()
@@ -770,6 +785,7 @@ class SetupModal(nextcord.ui.Modal):
         except nextcord.HTTPException as e:
             await interaction.response.send_message(f"❌ Ошибка Discord: {str(e)}", ephemeral=True)
             traceback.print_exc()
+
         except Exception as e:
             await interaction.response.send_message(f"❌ Произошла ошибка: {str(e)}", ephemeral=True)
             traceback.print_exc()
