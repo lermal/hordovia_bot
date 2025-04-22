@@ -46,6 +46,7 @@ def main():
     
     try:
         bot.run(token)
+        
     except nextcord.LoginFailure:
         bot.logger.critical("Неверный токен!")
         exit(1)

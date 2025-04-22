@@ -14,7 +14,7 @@ def setup_logger():
         format="%(asctime)s | [%(levelname)s] - %(message)s",
         datefmt="%d.%m.%Y - %H:%M:%S",
         handlers=[
-            logging.FileHandler("logs/bot.log"),
+            logging.FileHandler("logs/bot.log", encoding='utf-8'), 
             logging.StreamHandler()
         ]
     )
