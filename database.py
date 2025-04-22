@@ -33,7 +33,6 @@ class Database:
             """
         )
         
-        # Создаем таблицу для ролевых реакций
         await self.conn.execute(
             """
             CREATE TABLE IF NOT EXISTS role_reactions (
@@ -51,7 +50,7 @@ class Database:
         await self.conn.commit()
 
     async def get_guild_channels(self, guild_id: int) -> Optional[Tuple[int, int]]:
-        await self.connect()  # Добавляем подключение
+        await self.connect()
         async with self.conn.execute(
             "SELECT channel_id, category_id FROM channels WHERE guild_id = ?",
             (guild_id,)
@@ -59,7 +58,7 @@ class Database:
             return await cursor.fetchone()
 
     async def update_channel(self, guild_id: int, channel_id: int, category_id: int) -> None:
-        await self.connect()  # Гарантируем соединение
+        await self.connect()
         await self.conn.execute(
             "INSERT OR REPLACE INTO channels VALUES (?, ?, ?)",
             (guild_id, channel_id, category_id)
@@ -123,7 +122,6 @@ class Database:
     async def transfer_rights(self, new_owner_id: int, private_voice_id: int) -> None:
         """Передача прав на приватную комнату"""
         await self.connect()
-        # Сначала получаем текущие данные о комнате
         async with self.conn.execute(
             "SELECT * FROM privates WHERE voiceid = ?", 
             (private_voice_id,)
@@ -131,7 +129,6 @@ class Database:
             room_data = await cursor.fetchone()
         
         if room_data:
-            # Обновляем запись с новым владельцем
             await self.conn.execute(
                 "UPDATE privates SET ownerid = ?, perms = ? WHERE voiceid = ?",
                 (new_owner_id, new_owner_id, private_voice_id)
