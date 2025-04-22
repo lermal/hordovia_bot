@@ -165,4 +165,4 @@ cython_debug/
 # DB
 *.db
 
-./images/passports/
+./images/passports/*.png
