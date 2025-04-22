@@ -165,4 +165,8 @@ cython_debug/
 # DB
 *.db
 
+# Images
 ./images/passports/*.png
+
+# Data
+./data/*.json
