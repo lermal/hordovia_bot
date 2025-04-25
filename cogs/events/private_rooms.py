@@ -693,22 +693,39 @@ class PrivateRoomsCog(commands.Cog):
 
     async def cleanup_old_room(self, channel: nextcord.VoiceChannel, create_chan_id: int):
         try:
-            if channel.id == create_chan_id:
+            # Сохраняем id канала до того, как канал может стать None
+            channel_id = channel.id
+            channel_name = channel.name
+
+            if channel_id == create_chan_id:
                 return
 
-            room_data = await self.db.get_private_room_by_channel(channel.id)
+            room_data = await self.db.get_private_room_by_channel(channel_id)
             if not room_data:
                 return
 
-            if len(channel.members) == 0:
-                await self.db.delete_private_room(channel.id)
-                await channel.delete()
-                logger.info(f"Удалена пустая комната: {channel.name}")
-                
-        except nextcord.HTTPException as e:
-            logger.error(f"Ошибка при удалении комнаты: {str(e)}")
-            traceback.print_exc()
+            # Проверяем существует ли канал через безопасное получение
+            try:
+                channel = self.bot.get_channel(channel_id)
+                if not channel:  # Если канал не найден через get_channel
+                    await self.db.delete_private_room(channel_id)
+                    logger.info(f"Удален приватный канал из БД (канал не найден): {channel_name}")
+                    return
+            except Exception as e:
+                logger.error(f"Ошибка при проверке канала через get_channel: {str(e)}")
+                await self.db.delete_private_room(channel_id)
+                return
 
+            if len(channel.members) == 0:
+                await self.db.delete_private_room(channel_id)
+                try:
+                    await channel.delete()
+                    logger.info(f"Удалена пустая комната: {channel.name}")
+                except nextcord.NotFound:
+                    logger.info(f"Комната уже была удалена: {channel_name}")
+                except Exception as e:
+                    logger.error(f"Ошибка при удалении комнаты: {str(e)}")
+                    
         except Exception as e:
             logger.error(f"Непредвиденная ошибка: {str(e)}")
             traceback.print_exc()
