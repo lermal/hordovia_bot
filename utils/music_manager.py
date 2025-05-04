@@ -17,6 +17,7 @@ import json
 import urllib.parse
 from ytmusicapi import YTMusic
 import hashlib
+from config import AUDIO_FORMAT, AUDIO_QUALITY, FFMPEG_PATH
 
 """
 Для работы с YouTube Music API (неофициальный):
@@ -32,9 +33,7 @@ Linux: sudo apt-get install ffmpeg
 """
 
 # Основные настройки
-FFMPEG_PATH = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ffmpeg", "ffmpeg.exe"))
 TEMP_DIR = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "temp"))
-AUDIO_FORMAT = "mp3"  # Формат для сохранения аудио
 PLACEHOLDER_AUDIO = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "no_audio.wav"))
 TEMP_MUSIC_DIR = os.path.join(TEMP_DIR, "music")
 MUSIC_PATH = os.path.join(TEMP_DIR, "music")
@@ -62,6 +61,11 @@ ydl_opts = {
     'no_warnings': True,
     'socket_timeout': 15,
     'retries': 3,
+    'postprocessors': [{
+        'key': 'FFmpegExtractAudio',
+        'preferredcodec': AUDIO_FORMAT,
+        'preferredquality': str(AUDIO_QUALITY),
+    }],
 }
 
 # Проверяем наличие ffmpeg
