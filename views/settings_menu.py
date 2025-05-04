@@ -190,8 +190,25 @@ class MusicSettingsView(View):
         self.add_item(self.settings_select)
     
     async def on_setting_select(self, interaction: Interaction):
-        setting_key = self.settings_select.values[0]
-        await interaction.response.send_modal(EditSettingModal(setting_key))
+        try:
+            setting_key = self.settings_select.values[0]
+            settings_manager = SettingsManager()
+            current_settings = settings_manager.get_all_settings().get("music", {})
+            current_value = str(current_settings.get(setting_key, ""))
+            
+            modal = EditSettingModal(
+                setting_key=setting_key,
+                current_value=current_value,
+                category="music"
+            )
+            
+            await interaction.response.send_modal(modal)
+        except Exception as e:
+            logger.error(f"Ошибка при обработке выбора настройки музыки: {str(e)}")
+            await interaction.response.send_message(
+                "❌ Произошла ошибка при обработке выбора",
+                ephemeral=True
+            )
 
 # View для настроек Twitch
 class TwitchSettingsView(View):
@@ -221,8 +238,25 @@ class TwitchSettingsView(View):
         self.add_item(self.settings_select)
     
     async def on_setting_select(self, interaction: Interaction):
-        setting_key = self.settings_select.values[0]
-        await interaction.response.send_modal(EditSettingModal(setting_key))
+        try:
+            setting_key = self.settings_select.values[0]
+            settings_manager = SettingsManager()
+            current_settings = settings_manager.get_all_settings().get("twitch", {})
+            current_value = str(current_settings.get(setting_key, ""))
+            
+            modal = EditSettingModal(
+                setting_key=setting_key,
+                current_value=current_value,
+                category="twitch"
+            )
+            
+            await interaction.response.send_modal(modal)
+        except Exception as e:
+            logger.error(f"Ошибка при обработке выбора настройки Twitch: {str(e)}")
+            await interaction.response.send_message(
+                "❌ Произошла ошибка при обработке выбора",
+                ephemeral=True
+            )
 
 # View для общих настроек
 class GeneralSettingsView(View):
@@ -252,8 +286,25 @@ class GeneralSettingsView(View):
         self.add_item(self.settings_select)
     
     async def on_setting_select(self, interaction: Interaction):
-        setting_key = self.settings_select.values[0]
-        await interaction.response.send_modal(EditSettingModal(setting_key))
+        try:
+            setting_key = self.settings_select.values[0]
+            settings_manager = SettingsManager()
+            current_settings = settings_manager.get_all_settings().get("general", {})
+            current_value = str(current_settings.get(setting_key, ""))
+            
+            modal = EditSettingModal(
+                setting_key=setting_key,
+                current_value=current_value,
+                category="general"
+            )
+            
+            await interaction.response.send_modal(modal)
+        except Exception as e:
+            logger.error(f"Ошибка при обработке выбора настройки: {str(e)}")
+            await interaction.response.send_message(
+                "❌ Произошла ошибка при обработке выбора",
+                ephemeral=True
+            )
 
 # View для настроек приватных комнат
 class PrivateRoomsSettingsView(View):
@@ -355,5 +406,22 @@ class VerificationSettingsView(View):
         self.add_item(self.settings_select)
     
     async def on_setting_select(self, interaction: Interaction):
-        setting_key = self.settings_select.values[0]
-        await interaction.response.send_modal(EditSettingModal(setting_key)) 
+        try:
+            setting_key = self.settings_select.values[0]
+            settings_manager = SettingsManager()
+            current_settings = settings_manager.get_all_settings().get("verification", {})
+            current_value = str(current_settings.get(setting_key, ""))
+            
+            modal = EditSettingModal(
+                setting_key=setting_key,
+                current_value=current_value,
+                category="verification"
+            )
+            
+            await interaction.response.send_modal(modal)
+        except Exception as e:
+            logger.error(f"Ошибка при обработке выбора настройки верификации: {str(e)}")
+            await interaction.response.send_message(
+                "❌ Произошла ошибка при обработке выбора",
+                ephemeral=True
+            ) 
