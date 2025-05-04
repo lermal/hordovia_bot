@@ -654,7 +654,11 @@ class PrivateRoomsCog(commands.Cog):
                 category=category,
                 user_limit=settings.get("default_user_limit", 0),
                 overwrites={
-                    guild.default_role: nextcord.PermissionOverwrite(view_channel=True, connect=False),
+                    guild.default_role: nextcord.PermissionOverwrite(
+                        view_channel=True, 
+                        connect=False,
+                        mention_everyone=False
+                    ),
                     member: nextcord.PermissionOverwrite(
                         connect=True,
                         speak=True,
