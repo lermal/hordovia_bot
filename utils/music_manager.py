@@ -678,10 +678,10 @@ class MusicBot:
     def _play_finished(self, error):
         """Callback-функция, которая вызывается после окончания воспроизведения трека"""
         if error:
-            print(f"Ошибка при воспроизведении: {error}")
+            logger.error(f"Ошибка при воспроизведении: {error}")
         
-        # Запускаем асинхронную функцию через create_task
-        asyncio.create_task(self._after_track_finished())
+        # Используем существующий event loop
+        self.loop.create_task(self._after_track_finished())
     
     async def _cleanup_previous_track(self):
         """Удаляет файл предыдущего трека"""
