@@ -14,6 +14,7 @@ LOAD_EXCEPTIONS = []
 COGS_DIR = "cogs"
 
 # Whether or not the bot should automatically reload cogs when a change is made
+
 AUTO_RELOAD = True
 
 # Twitch configuration
