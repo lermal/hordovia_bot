@@ -18,6 +18,9 @@ import urllib.parse
 from ytmusicapi import YTMusic
 import hashlib
 from config import AUDIO_FORMAT, AUDIO_QUALITY, FFMPEG_PATH
+import logging
+
+logger = logging.getLogger(__name__)
 
 """
 Для работы с YouTube Music API (неофициальный):
@@ -1228,8 +1231,59 @@ class MusicBot:
 
 class MusicManager:
     """Класс для управления несколькими музыкальными ботами в разных голосовых каналах"""
-    def __init__(self, bot=None):
+    def __init__(self, bot):
         self.bot = bot
+        self.voice_clients = {}
+        self.queues = {}
+        self.current_tracks = {}
+        self.message_links = {}
+        self.loop = asyncio.get_event_loop()
+        
+        # Автоматический поиск ffmpeg
+        ffmpeg_path = None
+        if os.name == 'nt':  # Windows
+            # Проверяем стандартные пути установки
+            possible_paths = [
+                os.path.join(os.environ.get('ProgramFiles', ''), 'ffmpeg', 'bin', 'ffmpeg.exe'),
+                os.path.join(os.environ.get('ProgramFiles(x86)', ''), 'ffmpeg', 'bin', 'ffmpeg.exe'),
+                os.path.join(os.environ.get('LOCALAPPDATA', ''), 'ffmpeg', 'bin', 'ffmpeg.exe'),
+                'ffmpeg.exe'  # Проверяем PATH
+            ]
+        else:  # Linux
+            possible_paths = [
+                '/usr/bin/ffmpeg',
+                '/usr/local/bin/ffmpeg',
+                '/opt/ffmpeg/bin/ffmpeg',
+                'ffmpeg'  # Проверяем PATH
+            ]
+        
+        # Ищем ffmpeg
+        for path in possible_paths:
+            if os.path.exists(path):
+                ffmpeg_path = path
+                break
+        
+        # Настройки для yt-dlp
+        self.ydl_opts = {
+            'format': 'bestaudio/best',
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'cookiesfrombrowser': ('chrome',),  # Используем cookies из Chrome
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': True,
+        }
+        
+        # Если нашли ffmpeg, добавляем его в настройки
+        if ffmpeg_path:
+            self.ydl_opts['ffmpeg_location'] = ffmpeg_path
+            logger.info(f"Найден ffmpeg по пути: {ffmpeg_path}")
+        else:
+            logger.warning("ffmpeg не найден, будет использоваться системный ffmpeg из PATH")
+        
         self.music_bots = {}  # Словарь, где ключ - ID голосового канала, значение - экземпляр MusicBot
         self.used_bot_ids = set()  # Множество использованных ID ботов
         
