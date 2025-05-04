@@ -680,8 +680,15 @@ class MusicBot:
         if error:
             logger.error(f"Ошибка при воспроизведении: {error}")
         
-        # Используем asyncio.run_coroutine_threadsafe для запуска корутины из другого потока
-        asyncio.run_coroutine_threadsafe(self._after_track_finished(), self.loop)
+        # Создаем новую задачу в текущем event loop
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.create_task(self._after_track_finished())
+            else:
+                loop.run_until_complete(self._after_track_finished())
+        except Exception as e:
+            logger.error(f"Ошибка при запуске _after_track_finished: {e}")
     
     async def _cleanup_previous_track(self):
         """Удаляет файл предыдущего трека"""
@@ -930,166 +937,70 @@ class MusicBot:
         return track
     
     async def _search_track(self, query: str) -> Optional[Track]:
-        """Ищет трек по запросу (URL или текст)"""
-        print(f"Начинаю поиск трека: {query}")
-        
-        # Проверяем, является ли это URL-адресом YouTube или YouTube Music
-        if 'youtube.com/watch' in query or 'youtu.be/' in query:
-            # Извлекаем video_id из URL
-            video_id = None
-            if 'youtube.com/watch' in query:
-                video_id = query.split('v=')[1].split('&')[0]
-            elif 'youtu.be/' in query:
-                video_id = query.split('youtu.be/')[1].split('?')[0]
-                
-            if video_id:
-                try:
-                    # Получаем информацию о видео с помощью yt-dlp
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        info = ydl.extract_info(query, download=False)
-                        
-                        title = info.get('title', 'Неизвестный трек')
-                        author = info.get('uploader', 'Неизвестный исполнитель')
-                        duration = info.get('duration', 0)
-                        
-                        print(f"Найден трек на YouTube: {title} от {author}")
-                            
-                        return Track(
-                                title=title,
-                                author=author,
-                                url=query,
-                                source='ytmusic',
-                                duration=duration,
-                                metadata=info,
-                                id=str(uuid.uuid4()),
-                                video_id=video_id,
-                                isrc=None
-                        )
-                except Exception as e:
-                    print(f"Ошибка при получении информации о YouTube видео: {e}")
-                    import traceback
-                    traceback.print_exc()
-        
-        # Проверяем, является ли это URL для YouTube Music
-        if 'music.youtube.com' in query:
-            try:
-                # Извлекаем video_id из URL
-                if 'watch?v=' in query:
-                    video_id = query.split('watch?v=')[1].split('&')[0]
-                    
-                    # Получаем информацию о треке с помощью YouTube Music API
-                    try:
-                        track_info = ytmusic.get_song(video_id)
-                        if track_info:
-                            title = track_info.get('videoDetails', {}).get('title', 'Неизвестный трек')
-                            author = track_info.get('videoDetails', {}).get('author', 'Неизвестный исполнитель')
-                            duration = int(track_info.get('videoDetails', {}).get('lengthSeconds', 0))
-                            
-                            print(f"Найден трек на YouTube Music: {title} от {author}")
-                            
-                            return Track(
-                                title=title,
-                                author=author,
-                                url=query,
-                                source='ytmusic',
-                                duration=duration,
-                                metadata=track_info,
-                                id=str(uuid.uuid4()),
-                                video_id=video_id,
-                                isrc=None
-                            )
-                    except:
-                        # Если не удалось через API, пробуем через yt-dlp
-                        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                            info = ydl.extract_info(query, download=False)
-                            
-                            title = info.get('title', 'Неизвестный трек')
-                            author = info.get('uploader', 'Неизвестный исполнитель')
-                            duration = info.get('duration', 0)
-                            
-                            print(f"Найден трек на YouTube Music через yt-dlp: {title} от {author}")
-                            
-                            return Track(
-                                title=title,
-                                author=author,
-                                url=query,
-                                source='ytmusic',
-                                duration=duration,
-                                metadata=info,
-                                id=str(uuid.uuid4()),
-                                video_id=video_id,
-                                isrc=None
-                            )
-                            
-            except Exception as e:
-                print(f"Ошибка при получении информации о YouTube Music треке: {e}")
-                import traceback
-                traceback.print_exc()
-        
-        # Если это не URL, ищем через YouTube Music
+        """Поиск трека по запросу"""
         try:
-            print(f"Поиск трека через YouTube Music: {query}")
-            search_results = ytmusic.search(query, filter='songs', limit=1)
-            
-            if search_results:
-                track_data = search_results[0]
-                title = track_data.get('title', 'Неизвестный трек')
+            with yt_dlp.YoutubeDL(self.ydl_opts) as ydl:
+                # Пробуем сначала через YouTube Music
+                if not query.startswith(('http://', 'https://')):
+                    query = f'ytsearch1:{query}'
                 
-                # Извлекаем имя первого исполнителя
-                author = 'Неизвестный исполнитель'
-                if 'artists' in track_data and track_data['artists']:
-                    author = track_data['artists'][0].get('name', 'Неизвестный исполнитель')
+                try:
+                    info = ydl.extract_info(query, download=False)
+                except Exception as e:
+                    logger.error(f"Ошибка при извлечении информации: {str(e)}")
+                    # Пробуем альтернативный метод с другими параметрами
+                    try:
+                        # Меняем параметры для альтернативного поиска
+                        alt_opts = self.ydl_opts.copy()
+                        alt_opts.update({
+                            'format': 'bestaudio/best',
+                            'extract_flat': False,
+                            'nocheckcertificate': True,
+                            'ignoreerrors': True,
+                            'geo_bypass': True,
+                            'geo_bypass_country': 'US',
+                            'http_headers': {
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                                'Accept-Language': 'en-us,en;q=0.5',
+                                'Accept-Encoding': 'gzip,deflate',
+                                'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
+                                'Connection': 'keep-alive',
+                            }
+                        })
+                        
+                        with yt_dlp.YoutubeDL(alt_opts) as ydl_alt:
+                            info = ydl_alt.extract_info(query, download=False)
+                    except Exception as e2:
+                        logger.error(f"Ошибка при альтернативном поиске: {str(e2)}")
+                        return None
                 
-                video_id = track_data.get('videoId')
-                duration = 0
+                if not info:
+                    return None
                 
-                # Пытаемся получить продолжительность
-                if 'duration' in track_data:
-                    duration_str = track_data['duration']
-                    # Преобразование из формата MM:SS в секунды
-                    if ':' in duration_str:
-                        parts = duration_str.split(':')
-                        if len(parts) == 2:
-                            duration = int(parts[0]) * 60 + int(parts[1])
+                if 'entries' in info:
+                    info = info['entries'][0]
                 
-                print(f"Найден трек через YouTube Music: {title} от {author}")
+                # Проверяем наличие URL для воспроизведения
+                if not info.get('url'):
+                    logger.error("URL для воспроизведения не найден")
+                    return None
                 
+                # Создаем объект Track
                 return Track(
-                    title=title,
-                    author=author,
-                    url=f"https://music.youtube.com/watch?v={video_id}" if video_id else "",
+                    title=info.get('title', 'Неизвестный трек'),
+                    author=info.get('uploader', 'Неизвестный исполнитель'),
+                    url=info.get('url', query),
                     source='ytmusic',
-                    duration=duration,
-                    metadata=track_data,
+                    duration=info.get('duration', 0),
+                    metadata=info,
                     id=str(uuid.uuid4()),
-                    video_id=video_id,
+                    video_id=info.get('id'),
                     isrc=None
                 )
         except Exception as e:
-            print(f"Ошибка при поиске в YouTube Music: {e}")
-            import traceback
-            traceback.print_exc()
-        
-        # Создаем плейсхолдер для трека, когда поиск не дал результатов
-        # Но только если запрос не пустой
-        if query.strip():
-            dummy_track = Track(
-                title=query,
-                author="Неизвестный исполнитель",
-                url="",
-                source="local",
-                duration=0,
-                metadata=None,
-                file_path=None,
-                id=str(uuid.uuid4()),
-                isrc=None
-            )
-            
-            print(f"Создан плейсхолдер для трека: {query}")
-            return dummy_track
-        else:
-            print("Пустой запрос, трек не создан")
-        return None
+            logger.error(f"Ошибка при поиске трека: {str(e)}")
+            return None
     
     def get_queue(self, voice_channel_id: int) -> List[Track]:
         """Возвращает текущую очередь треков"""
@@ -1239,7 +1150,45 @@ class MusicManager:
         self.message_links = {}
         self.loop = asyncio.get_event_loop() if asyncio.get_event_loop().is_running() else asyncio.new_event_loop()
         
-        # Автоматический поиск ffmpeg
+        # Настройки для yt-dlp
+        self.ydl_opts = {
+            'format': 'bestaudio/best',
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': True,
+            'nocheckcertificate': True,
+            'ignoreerrors': True,
+            'logtostderr': False,
+            'no_warnings': True,
+            'default_search': 'auto',
+            'source_address': '0.0.0.0',
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'web'],
+                    'player_skip': ['js', 'configs', 'webpage']
+                }
+            },
+            'cookiefile': None,  # Отключаем использование cookies
+            'cookiesfrombrowser': None,  # Отключаем использование cookies из браузера
+            'geo_bypass': True,  # Обходим географические ограничения
+            'geo_bypass_country': 'US',  # Используем US как страну по умолчанию
+            'geo_bypass_ip_block': None,  # Не блокируем IP
+            'http_headers': {  # Добавляем заголовки для имитации браузера
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-us,en;q=0.5',
+                'Accept-Encoding': 'gzip,deflate',
+                'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
+                'Connection': 'keep-alive',
+            }
+        }
+        
+        # Если нашли ffmpeg, добавляем его в настройки
         ffmpeg_path = None
         if os.name == 'nt':  # Windows
             # Проверяем стандартные пути установки
@@ -1263,21 +1212,6 @@ class MusicManager:
                 ffmpeg_path = path
                 break
         
-        # Настройки для yt-dlp
-        self.ydl_opts = {
-            'format': 'bestaudio/best',
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
-            'cookiesfrombrowser': ('chrome',),  # Используем cookies из Chrome
-            'quiet': True,
-            'no_warnings': True,
-            'extract_flat': True,
-        }
-        
-        # Если нашли ffmpeg, добавляем его в настройки
         if ffmpeg_path:
             self.ydl_opts['ffmpeg_location'] = ffmpeg_path
             logger.info(f"Найден ffmpeg по пути: {ffmpeg_path}")
@@ -1364,166 +1298,70 @@ class MusicManager:
         return track
     
     async def _search_track(self, query: str) -> Optional[Track]:
-        """Ищет трек по запросу (URL или текст)"""
-        print(f"Начинаю поиск трека: {query}")
-        
-        # Проверяем, является ли это URL-адресом YouTube или YouTube Music
-        if 'youtube.com/watch' in query or 'youtu.be/' in query:
-            # Извлекаем video_id из URL
-            video_id = None
-            if 'youtube.com/watch' in query:
-                video_id = query.split('v=')[1].split('&')[0]
-            elif 'youtu.be/' in query:
-                video_id = query.split('youtu.be/')[1].split('?')[0]
-                
-            if video_id:
-                try:
-                    # Получаем информацию о видео с помощью yt-dlp
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        info = ydl.extract_info(query, download=False)
-                        
-                        title = info.get('title', 'Неизвестный трек')
-                        author = info.get('uploader', 'Неизвестный исполнитель')
-                        duration = info.get('duration', 0)
-                        
-                        print(f"Найден трек на YouTube: {title} от {author}")
-                            
-                        return Track(
-                                title=title,
-                                author=author,
-                                url=query,
-                                source='ytmusic',
-                                duration=duration,
-                                metadata=info,
-                                id=str(uuid.uuid4()),
-                                video_id=video_id,
-                                isrc=None
-                        )
-                except Exception as e:
-                    print(f"Ошибка при получении информации о YouTube видео: {e}")
-                    import traceback
-                    traceback.print_exc()
-        
-        # Проверяем, является ли это URL для YouTube Music
-        if 'music.youtube.com' in query:
-            try:
-                # Извлекаем video_id из URL
-                if 'watch?v=' in query:
-                    video_id = query.split('watch?v=')[1].split('&')[0]
-                    
-                    # Получаем информацию о треке с помощью YouTube Music API
-                    try:
-                        track_info = ytmusic.get_song(video_id)
-                        if track_info:
-                            title = track_info.get('videoDetails', {}).get('title', 'Неизвестный трек')
-                            author = track_info.get('videoDetails', {}).get('author', 'Неизвестный исполнитель')
-                            duration = int(track_info.get('videoDetails', {}).get('lengthSeconds', 0))
-                            
-                            print(f"Найден трек на YouTube Music: {title} от {author}")
-                            
-                            return Track(
-                                title=title,
-                                author=author,
-                                url=query,
-                                source='ytmusic',
-                                duration=duration,
-                                metadata=track_info,
-                                id=str(uuid.uuid4()),
-                                video_id=video_id,
-                                isrc=None
-                            )
-                    except:
-                        # Если не удалось через API, пробуем через yt-dlp
-                        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                            info = ydl.extract_info(query, download=False)
-                            
-                            title = info.get('title', 'Неизвестный трек')
-                            author = info.get('uploader', 'Неизвестный исполнитель')
-                            duration = info.get('duration', 0)
-                            
-                            print(f"Найден трек на YouTube Music через yt-dlp: {title} от {author}")
-                            
-                            return Track(
-                                title=title,
-                                author=author,
-                                url=query,
-                                source='ytmusic',
-                                duration=duration,
-                                metadata=info,
-                                id=str(uuid.uuid4()),
-                                video_id=video_id,
-                                isrc=None
-                            )
-                            
-            except Exception as e:
-                print(f"Ошибка при получении информации о YouTube Music треке: {e}")
-                import traceback
-                traceback.print_exc()
-        
-        # Если это не URL, ищем через YouTube Music
+        """Поиск трека по запросу"""
         try:
-            print(f"Поиск трека через YouTube Music: {query}")
-            search_results = ytmusic.search(query, filter='songs', limit=1)
-            
-            if search_results:
-                track_data = search_results[0]
-                title = track_data.get('title', 'Неизвестный трек')
+            with yt_dlp.YoutubeDL(self.ydl_opts) as ydl:
+                # Пробуем сначала через YouTube Music
+                if not query.startswith(('http://', 'https://')):
+                    query = f'ytsearch1:{query}'
                 
-                # Извлекаем имя первого исполнителя
-                author = 'Неизвестный исполнитель'
-                if 'artists' in track_data and track_data['artists']:
-                    author = track_data['artists'][0].get('name', 'Неизвестный исполнитель')
+                try:
+                    info = ydl.extract_info(query, download=False)
+                except Exception as e:
+                    logger.error(f"Ошибка при извлечении информации: {str(e)}")
+                    # Пробуем альтернативный метод с другими параметрами
+                    try:
+                        # Меняем параметры для альтернативного поиска
+                        alt_opts = self.ydl_opts.copy()
+                        alt_opts.update({
+                            'format': 'bestaudio/best',
+                            'extract_flat': False,
+                            'nocheckcertificate': True,
+                            'ignoreerrors': True,
+                            'geo_bypass': True,
+                            'geo_bypass_country': 'US',
+                            'http_headers': {
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                                'Accept-Language': 'en-us,en;q=0.5',
+                                'Accept-Encoding': 'gzip,deflate',
+                                'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
+                                'Connection': 'keep-alive',
+                            }
+                        })
+                        
+                        with yt_dlp.YoutubeDL(alt_opts) as ydl_alt:
+                            info = ydl_alt.extract_info(query, download=False)
+                    except Exception as e2:
+                        logger.error(f"Ошибка при альтернативном поиске: {str(e2)}")
+                        return None
                 
-                video_id = track_data.get('videoId')
-                duration = 0
+                if not info:
+                    return None
                 
-                # Пытаемся получить продолжительность
-                if 'duration' in track_data:
-                    duration_str = track_data['duration']
-                    # Преобразование из формата MM:SS в секунды
-                    if ':' in duration_str:
-                        parts = duration_str.split(':')
-                        if len(parts) == 2:
-                            duration = int(parts[0]) * 60 + int(parts[1])
+                if 'entries' in info:
+                    info = info['entries'][0]
                 
-                print(f"Найден трек через YouTube Music: {title} от {author}")
+                # Проверяем наличие URL для воспроизведения
+                if not info.get('url'):
+                    logger.error("URL для воспроизведения не найден")
+                    return None
                 
+                # Создаем объект Track
                 return Track(
-                    title=title,
-                    author=author,
-                    url=f"https://music.youtube.com/watch?v={video_id}" if video_id else "",
+                    title=info.get('title', 'Неизвестный трек'),
+                    author=info.get('uploader', 'Неизвестный исполнитель'),
+                    url=info.get('url', query),
                     source='ytmusic',
-                    duration=duration,
-                    metadata=track_data,
+                    duration=info.get('duration', 0),
+                    metadata=info,
                     id=str(uuid.uuid4()),
-                    video_id=video_id,
+                    video_id=info.get('id'),
                     isrc=None
                 )
         except Exception as e:
-            print(f"Ошибка при поиске в YouTube Music: {e}")
-            import traceback
-            traceback.print_exc()
-        
-        # Создаем плейсхолдер для трека, когда поиск не дал результатов
-        # Но только если запрос не пустой
-        if query.strip():
-            dummy_track = Track(
-                title=query,
-                author="Неизвестный исполнитель",
-                url="",
-                source="local",
-                duration=0,
-                metadata=None,
-                file_path=None,
-                id=str(uuid.uuid4()),
-                isrc=None
-            )
-            
-            print(f"Создан плейсхолдер для трека: {query}")
-            return dummy_track
-        else:
-            print("Пустой запрос, трек не создан")
-        return None
+            logger.error(f"Ошибка при поиске трека: {str(e)}")
+            return None
     
     def get_queue(self, voice_channel_id: int) -> List[Track]:
         """Возвращает текущую очередь треков"""
