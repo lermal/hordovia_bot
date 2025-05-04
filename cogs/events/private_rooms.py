@@ -364,7 +364,6 @@ class DropdownOwn(nextcord.ui.UserSelect):
             
             new_owner_overwrite.update(
                 manage_channels=True,
-                manage_permissions=True,
                 connect=True,
                 speak=True,
                 stream=True,
@@ -373,7 +372,6 @@ class DropdownOwn(nextcord.ui.UserSelect):
             
             old_owner_overwrite.update(
                 manage_channels=False,
-                manage_permissions=False,
                 priority_speaker=False
             )
             
@@ -664,8 +662,7 @@ class PrivateRoomsCog(commands.Cog):
                         speak=True,
                         stream=True,
                         priority_speaker=True,
-                        manage_channels=True,
-                        manage_permissions=True
+                        manage_channels=True
                     )
                 }
             )
