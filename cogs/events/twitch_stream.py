@@ -7,6 +7,9 @@ import asyncio
 from datetime import datetime, timedelta
 import json
 import os
+from logger import setup_logger
+
+logger = setup_logger()
 
 class TwitchStream(Cog):
     def __init__(self, bot: Bot):
@@ -47,9 +50,9 @@ class TwitchStream(Cog):
                 self.stream_messages = data.get("stream_messages", {})
                 self.stream_categories = data.get("stream_categories", {})
                 self.streaming = data.get("streaming", {})
-                print("Twitch: Состояние загружено")
+                logger.info("Twitch: Состояние загружено")
         except Exception as e:
-            print(f"Twitch: Ошибка при загрузке состояния: {e}")
+            logger.error(f"Twitch: Ошибка при загрузке состояния: {e}")
 
     def save_state(self):
         """Сохранение текущего состояния"""
@@ -62,7 +65,7 @@ class TwitchStream(Cog):
             with open(self.state_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=4)
         except Exception as e:
-            print(f"Twitch: Ошибка при сохранении состояния: {e}")
+            logger.error(f"Twitch: Ошибка при сохранении состояния: {e}")
 
     def load_token(self):
         """Загрузка сохраненного токена из файла"""
@@ -81,13 +84,13 @@ class TwitchStream(Cog):
                     
                 # Проверяем, не истек ли токен
                 if self.token_expires_at and datetime.now() >= self.token_expires_at:
-                    print("Twitch: Токен истек, требуется новый")
+                    logger.error("Twitch: Токен истек, требуется новый")
                     self.access_token = None
                     self.token_expires_at = None
                 else:
-                    print("Twitch: Загружен сохраненный токен")
+                    logger.info("Twitch: Загружен сохраненный токен")
         except Exception as e:
-            print(f"Twitch: Ошибка при загрузке токена: {e}")
+            logger.error(f"Twitch: Ошибка при загрузке токена: {e}")
             self.access_token = None
             self.token_expires_at = None
 
@@ -105,9 +108,9 @@ class TwitchStream(Cog):
             with open(self.token_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=4)
                 
-            print(f"Twitch: Токен сохранен, срок действия до {self.token_expires_at}")
+            logger.info(f"Twitch: Токен сохранен, срок действия до {self.token_expires_at}")
         except Exception as e:
-            print(f"Twitch: Ошибка при сохранении токена: {e}")
+            logger.error(f"Twitch: Ошибка при сохранении токена: {e}")
 
     def load_streamers(self):
         """Загрузка списка стримеров из файла"""
@@ -136,11 +139,11 @@ class TwitchStream(Cog):
                         self.save_token(data['access_token'], data['expires_in'])
                     else:
                         error_data = await response.json()
-                        print(f"Twitch: Ошибка получения токена: {response.status}")
-                        print(f"Twitch: Ответ сервера: {error_data}")
+                        logger.error(f"Twitch: Ошибка получения токена: {response.status}")
+                        logger.error(f"Twitch: Ответ сервера: {error_data}")
         except Exception as e:
-            print(f"Twitch: Ошибка при получении токена: {e}")
-            print(f"Twitch: Проверьте значения TWITCH_CLIENT_ID и TWITCH_CLIENT_SECRET в .env файле")
+            logger.error(f"Twitch: Ошибка при получении токена: {e}")
+            logger.error(f"Twitch: Проверьте значения TWITCH_CLIENT_ID и TWITCH_CLIENT_SECRET в .env файле")
 
     async def check_stream_status(self):
         """Проверка статуса стрима"""
@@ -180,12 +183,12 @@ class TwitchStream(Cog):
                             was_streaming = channel in self.streaming
                             
                             if is_streaming and not was_streaming:
-                                print(f"Twitch: Стрим начался у {channel}")
+                                logger.info(f"Twitch: Стрим начался у {channel}")
                                 await self.on_stream_start(channel, active_streams[channel], streamer_data["description"])
                                 self.streaming[channel] = True
                                 self.save_state()
                             elif not is_streaming and was_streaming:
-                                print(f"Twitch: Стрим закончился у {channel}")
+                                logger.info(f"Twitch: Стрим закончился у {channel}")
                                 await self.on_stream_end(channel, streamer_data["description"])
                                 del self.streaming[channel]
                                 self.save_state()
@@ -193,12 +196,12 @@ class TwitchStream(Cog):
                                 # Проверяем изменение категории
                                 current_category = active_streams[channel]['game_name']
                                 if current_category != self.stream_categories.get(channel):
-                                    print(f"Twitch: У {channel} изменилась категория на {current_category}")
+                                    logger.info(f"Twitch: У {channel} изменилась категория на {current_category}")
                                     await self.update_stream_category(channel, active_streams[channel])
                     else:
-                        print(f"Twitch: Ошибка проверки стрима: {response.status}")
+                        logger.error(f"Twitch: Ошибка проверки стрима: {response.status}")
         except Exception as e:
-            print(f"Twitch: Ошибка при проверке стрима: {e}")
+            logger.error(f"Twitch: Ошибка при проверке стрима: {e}")
 
     async def get_user_avatar(self, login):
         """Получить URL аватарки стримера по логину с кэшированием"""
@@ -224,7 +227,7 @@ class TwitchStream(Cog):
                             return avatar_url
             return None
         except Exception as e:
-            print(f"Twitch: Ошибка при получении аватарки: {e}")
+            logger.error(f"Twitch: Ошибка при получении аватарки: {e}")
             return None
 
     async def on_stream_start(self, channel, stream_data, description):
@@ -233,7 +236,7 @@ class TwitchStream(Cog):
             # Получаем канал для уведомлений
             notification_channel = self.bot.get_channel(TWITCH_NOTIFICATION_CHANNEL_ID)
             if not notification_channel:
-                print("Twitch: Канал для уведомлений не найден")
+                logger.error("Twitch: Канал для уведомлений не найден")
                 return
 
             # Получаем аватарку стримера
@@ -258,10 +261,10 @@ class TwitchStream(Cog):
                         button = ui.Button(label="Перейти на канал", url=f"https://twitch.tv/{channel}", style=ButtonStyle.url)
                         view.add_item(button)
                         await message.edit(embed=embed, view=view)
-                        print(f"Twitch: Сообщение о стриме {channel} обновлено")
+                        logger.info(f"Twitch: Сообщение о стриме {channel} обновлено")
                         return
                 except Exception as e:
-                    print(f"Twitch: Ошибка при обновлении сообщения: {e}")
+                    logger.error(f"Twitch: Ошибка при обновлении сообщения: {e}")
                     del self.stream_messages[channel]
                     self.save_state()
 
@@ -283,7 +286,7 @@ class TwitchStream(Cog):
             self.stream_messages[channel] = message.id
             self.save_state()
         except Exception as e:
-            print(f"Twitch: Ошибка при обработке начала стрима: {e}")
+            logger.error(f"Twitch: Ошибка при обработке начала стрима: {e}")
 
     async def on_stream_end(self, channel, description):
         """Действия при окончании стрима"""
@@ -291,7 +294,7 @@ class TwitchStream(Cog):
             # Получаем канал для уведомлений
             notification_channel = self.bot.get_channel(TWITCH_NOTIFICATION_CHANNEL_ID)
             if not notification_channel:
-                print("Twitch: Канал для уведомлений не найден")
+                logger.info("Twitch: Канал для уведомлений не найден")
                 return
 
             # Получаем ID сообщения о стриме
@@ -310,24 +313,24 @@ class TwitchStream(Cog):
                         delete_task = self.bot.loop.create_task(self.delete_message_after_delay(message, channel))
                         self.pending_deletions[channel] = delete_task
                 except Exception as e:
-                    print(f"Twitch: Ошибка при редактировании сообщения: {e}")
+                    logger.error(f"Twitch: Ошибка при редактировании сообщения: {e}")
                     # Если не удалось редактировать сообщение, удаляем его из словаря
                     del self.stream_messages[channel]
                     self.save_state()
         except Exception as e:
-            print(f"Twitch: Ошибка при обработке окончания стрима: {e}")
+            logger.error(f"Twitch: Ошибка при обработке окончания стрима: {e}")
 
     async def delete_message_after_delay(self, message, channel):
         """Удаление сообщения через 5 минут"""
         await asyncio.sleep(300)
         if channel in self.streaming and self.streaming[channel]:
-            print(f"Twitch: Стрим {channel} возобновился, сообщение не будет удалено")
+            logger.info(f"Twitch: Стрим {channel} возобновился, сообщение не будет удалено")
             return
         try:
             await message.delete()
-            print(f"Twitch: Сообщение о стриме {channel} удалено")
+            logger.info(f"Twitch: Сообщение о стриме {channel} удалено")
         except Exception as e:
-            print(f"Twitch: Ошибка при удалении сообщения: {e}")
+            logger.error(f"Twitch: Ошибка при удалении сообщения: {e}")
         # Только теперь удаляем из словарей и сохраняем состояние!
         if channel in self.stream_messages:
             del self.stream_messages[channel]
@@ -346,7 +349,7 @@ class TwitchStream(Cog):
                 await self.check_stream_status()
                 await asyncio.sleep(TWITCH_CHECK_INTERVAL)  # Интервал проверки в секундах
             except Exception as e:
-                print(f"Twitch: Ошибка в цикле проверки: {e}")
+                logger.error(f"Twitch: Ошибка в цикле проверки: {e}")
                 await asyncio.sleep(60)  # При ошибке ждем минуту перед следующей попыткой
 
     async def update_stream_category(self, channel, stream_data):
@@ -355,7 +358,7 @@ class TwitchStream(Cog):
             # Получаем канал для уведомлений
             notification_channel = self.bot.get_channel(TWITCH_NOTIFICATION_CHANNEL_ID)
             if not notification_channel:
-                print("Twitch: Канал для уведомлений не найден")
+                logger.error("Twitch: Канал для уведомлений не найден")
                 return
 
             # Получаем ID сообщения о стриме
@@ -376,9 +379,9 @@ class TwitchStream(Cog):
                         )
                         await message.edit(embed=embed)
                 except Exception as e:
-                    print(f"Twitch: Ошибка при обновлении категории: {e}")
+                    logger.error(f"Twitch: Ошибка при обновлении категории: {e}")
         except Exception as e:
-            print(f"Twitch: Ошибка при обновлении категории: {e}")
+            logger.error(f"Twitch: Ошибка при обновлении категории: {e}")
 
     def cog_unload(self):
         """Остановка задачи при выгрузке кога"""
@@ -397,7 +400,7 @@ class TwitchStream(Cog):
                 with open(path, "r", encoding="utf-8") as f:
                     self.avatar_cache = json.load(f)
             except Exception as e:
-                print(f"Twitch: Ошибка при загрузке кэша аватарок: {e}")
+                logger.error(f"Twitch: Ошибка при загрузке кэша аватарок: {e}")
 
     def save_avatar_cache(self):
         path = "data/avatar_cache.json"
@@ -405,7 +408,7 @@ class TwitchStream(Cog):
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(self.avatar_cache, f, ensure_ascii=False, indent=4)
         except Exception as e:
-            print(f"Twitch: Ошибка при сохранении кэша аватарок: {e}")
+            logger.error(f"Twitch: Ошибка при сохранении кэша аватарок: {e}")
 
 def setup(bot: Bot):
     bot.add_cog(TwitchStream(bot)) 

@@ -1,67 +1,66 @@
-# Nextcord-Bot-Template
+## Содержание
 
-## Table of Contents
+- [Введение](#введение)
+- [Предварительные требования](#предварительные-требования)
+- [Начало работы](#начало-работы)
+- [Встроенные функции](#встроенные-функции)
+- [Создание когов](#создание-когов)
 
-- [Introduction](#introduction)
-- [Prerequisites](#prerequisites)
-- [Getting Started](#getting-started)
-- [Built-in Functionalities](#built-in-functionalities)
-- [Contributing](#contributing)
-- [License](#license)
+## Введение
 
-## Introduction
+Это шаблон для Discord-бота на Python с использованием библиотеки [Nextcord](https://nextcord.dev/). Он предоставляет базовую структуру для вашего проекта, примеры команд/событий/задач, утилиты и другие компоненты.
 
-This is a template for a Discord bot written in Python using the [Nextcord](https://nextcord.dev/) library. It provides a basic structure for your bot project, as well as examples of commands/events/tasks, utilities and more.
+## Предварительные требования
 
-## Prerequisites
+- [Python](https://www.python.org/downloads/) 3.8 или новее (Примечание: использование последней версии Python может вызвать [ошибку при установке](https://stackoverflow.com/q/77710589/18072035), поэтому рекомендуется использовать стабильную версию).
+- [Аккаунт бота](https://docs.nextcord.dev/en/stable/discord.html) и токен.
+- Базовые знания Python и Discord API.
 
-- [Python](https://www.python.org/downloads/) 3.8 or higher (Note: using the latest version of Python may cause [this installation error](https://stackoverflow.com/q/77710589/18072035), so the easiest way to avoid this is not to use it.)
-- A [bot account](https://docs.nextcord.dev/en/stable/discord.html) and token
-- Basic knowledge of Python and Discord
+## Начало работы
 
-## Getting Started
+1. Создайте виртуальное окружение (рекомендуется):
+    - Windows: `python -m venv venv`
+    - Linux/macOS: `python3 -m venv venv`
+2. Активируйте окружение:
+    - Windows: `venv\Scripts\activate`
+    - Linux/macOS: `source venv/bin/activate`
+3. Установите зависимости: `pip install -r requirements.txt`
+4. Переименуйте `.env.example` в `.env` и добавьте токен бота.
+5. Укажите ID вашего тестового сервера в файле `config.py`.
+6. Запустите бота: `python3 main.py`.
 
-1. Click on the "Use this template" button at the top of the GitHub page to create a new repository based on this template.
-2. Clone your new repository locally: `git clone https://github.com/yourusername/your-bot-repo.git`
-3. Navigate to the cloned repository: `cd your-bot-repo`
-4. Create a virtual environment (recommended):
-    - On Windows: `python -m venv venv`
-    - On Linux/macOS: `python3 -m venv venv`
-5. Activate the virtual environment:
-    - On Windows: `venv\Scripts\activate`
-    - On Linux/macOS: `source venv/bin/activate`
-6. Install dependencies: `pip install -r requirements.txt`
-7. Rename `.env.example` to `.env` and add your bot's token.
-8. Add your test server's ID to the config.py file.
-9. Run the bot using `python3 main.py`.
+## Встроенные функции
 
-## Built-in Functionalities
+### Обработчик когов (Cogs)
 
-### Cogs Handler
+Бот использует систему когов для организации команд, событий и задач. Вы можете легко структурировать код в отдельные файлы. Директория с когами настраивается через переменную `COGS_DIR` в `config.py`.
 
-The bot handles commands, events, and tasks using cogs. This allows you to easily organize your code into separate files and folders. The cogs directory can be defined by setting the `COGS_DIR` variable in the `config.py` file.
+### Автоперезагрузка
 
-### Auto Reload
+Бот может автоматически перезагружать компоненты при изменении кода. Функция включается/выключается через переменную `AUTO_RELOAD` в `config.py`.
 
-The bot can automatically reload commands, events, and tasks when they are modified. This is useful for testing changes without having to restart the bot.
-This feature can be enabled/disabled by setting the `AUTO_RELOAD` variable in the `config.py` file.
+### Компоненты интерфейса
 
-### Views
+- `ConfirmButtons`: Кнопки подтверждения действий.
+- `PageButtons`: Пагинация сообщений с навигационными кнопками.
 
-- `ConfirmButtons`: A view that displays a confirmation message with two buttons.
-- `PageButtons`: A view that displays a paginated message with buttons to navigate between pages.
+### Логирование
 
-### Logging
+Встроенный класс `Logger` для записи логов в консоль и файл.
 
-The bot has a built-in `Logger` class that can be used to log messages to the console and a log file.
+## Создание когов
 
-## Creating Cogs
+Чтобы создать новый ког:
+1. Создайте файл в директории `cogs`.
+2. Создайте класс, наследующий `nextcord.ext.commands.Cog`.
+3. Добавьте функцию `setup` для регистрации кога.
+4. Реализуйте команды/события/задачи.
 
-To create a new cog, create a new file in the cogs directory, create a class that inherits from `nextcord.ext.commands.Cog` and a `setup` function that adds the cog to the bot. Then, add your commands, events, and tasks to the cog. Read the [Nextcord cogs documentation](https://docs.nextcord.dev/en/latest/ext/commands/api.html#nextcord.ext.commands.Cog) or take a look at the [Nextcord examples](https://github.com/nextcord/nextcord/tree/master/examples) for more information. Here are some examples of cogs:
+Примеры:
 
-### Command
+### Команда
 
-```py
+```python
 from config import *
 from bot import Bot
 from nextcord import Interaction, slash_command
@@ -71,17 +70,17 @@ class ExampleCommand(Cog):
     def __init__(self, bot: Bot):
         self.bot = bot
 
-    @slash_command(description="Example command", guild_ids=GUILD_IDS)
-    async def example_command(self, interaction: Interaction, ...): # Replace ... with your command parameters
-        pass # Your code here
+    @slash_command(description="Пример команды", guild_ids=GUILD_IDS)
+    async def example_command(self, interaction: Interaction, ...): # Замените ... на параметры
+        pass # Ваш код здесь
 
 def setup(bot: Bot):
     bot.add_cog(ExampleCommand(bot))
 ```
 
-### Event
+### Событие
 
-```py
+```python
 from config import *
 from bot import Bot
 from nextcord.ext.commands import Cog
@@ -91,19 +90,19 @@ class ExampleEvent(Cog):
     def __init__(self, bot: Bot):
         self.bot = bot
 
-    @commands.Cog.listener("event_name") # Replace event_name with the event name
-    async def example_event(self, ...): # Replace ... with the event parameters
-        pass # Your code here
+    @commands.Cog.listener("имя_события") # Укажите название события
+    async def example_event(self, ...): # Параметры события
+        pass # Ваш код
 
 def setup(bot: Bot):
     bot.add_cog(ExampleEvent(bot))
 ```
 
-Note: You can find a list of events [here](https://nextcord.readthedocs.io/en/latest/api.html#event-reference).
+Список событий: [документация Nextcord](https://nextcord.readthedocs.io/en/latest/api.html#event-reference).
 
-### Task
+### Задача
 
-```py
+```python
 from config import *
 from bot import Bot
 from nextcord.ext.commands import Cog
@@ -113,25 +112,15 @@ class ExampleTask(Cog):
     def __init__(self, bot: Bot):
         self.bot = bot
     
-    @tasks.loop(seconds=30) # Put the interval here using seconds, minutes or hours
+    @tasks.loop(seconds=30) # Интервал выполнения
     async def example_task(self):
-        await self.bot.wait_until_ready() # This prevents the task from running before the bot is ready
-        # Your code here
+        await self.bot.wait_until_ready() 
+        # Ваш код
                 
     @example_task.error
     async def on_error(self, exception: Exception):
-        await self.bot.handle_task_error(exception, "example_task") # This will log the error and print it to the console
+        await self.bot.handle_task_error(exception, "example_task")
 
 def setup(bot: Bot):
     bot.add_cog(ExampleTask(bot))
 ```
-
-## Contributing
-
-Contributions are welcome! If you have any suggestions or find any bugs, please open an issue or submit a pull request.
-
-## License
-
-This project is licensed under the MIT License.
-You are free to use, modify, and distribute this code as long as you give credit to the original author and include the license.
-See the [LICENSE](LICENSE) file for details.

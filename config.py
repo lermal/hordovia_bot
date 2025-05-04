@@ -1,5 +1,9 @@
 import os
 from dotenv import load_dotenv
+from logger import setup_logger
+
+# Инициализируем логгер
+logger = setup_logger()
 
 # Загружаем переменные окружения
 load_dotenv()
@@ -14,7 +18,6 @@ LOAD_EXCEPTIONS = []
 COGS_DIR = "cogs"
 
 # Whether or not the bot should automatically reload cogs when a change is made
-
 AUTO_RELOAD = True
 
 # Twitch configuration
@@ -25,4 +28,4 @@ TWITCH_CHECK_INTERVAL = int(os.getenv("TWITCH_CHECK_INTERVAL", 15))
 
 # Проверяем наличие обязательных переменных
 if not TWITCH_CLIENT_ID or not TWITCH_CLIENT_SECRET:
-    print("ОШИБКА: TWITCH_CLIENT_ID или TWITCH_CLIENT_SECRET не установлены в .env файле!")
+    logger.error("TWITCH_CLIENT_ID или TWITCH_CLIENT_SECRET не установлены в .env файле!")

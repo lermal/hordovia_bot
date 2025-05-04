@@ -3,6 +3,10 @@ from bot import Bot
 from nextcord import RawReactionActionEvent
 from nextcord.ext.commands import Cog
 import asyncio
+from logger import setup_logger
+
+# Инициализируем логгер
+logger = setup_logger()
 
 class RoleReactionEvents(Cog):
     def __init__(self, bot: Bot):
@@ -17,7 +21,7 @@ class RoleReactionEvents(Cog):
         # Ждем, пока база данных будет инициализирована
         while not self.bot.db.conn:
             await asyncio.sleep(1)
-            print("Ожидание инициализации БД в RoleReactionEvents...")
+            logger.info("Ожидание инициализации БД в RoleReactionEvents...")
             
         try:
             reactions = await self.bot.db.get_all_role_reactions()
@@ -32,9 +36,9 @@ class RoleReactionEvents(Cog):
                     
                 self.cache[message_id][emoji] = role_id
                 
-            print(f"Загружено {len(reactions)} ролевых реакций")
+            logger.info(f"Загружено {len(reactions)} ролевых реакций")
         except Exception as e:
-            print(f"Ошибка при загрузке ролевых реакций: {e}")
+            logger.error(f"Ошибка при загрузке ролевых реакций: {e}")
     
     @Cog.listener("on_raw_reaction_add")
     async def on_raw_reaction_add(self, payload: RawReactionActionEvent):
@@ -69,7 +73,7 @@ class RoleReactionEvents(Cog):
             try:
                 await member.add_roles(role, reason="Роль по реакции")
             except Exception as e:
-                print(f"Ошибка при выдаче роли: {e}")
+                logger.error(f"Ошибка при выдаче роли: {e}")
     
     @Cog.listener("on_raw_reaction_remove")
     async def on_raw_reaction_remove(self, payload: RawReactionActionEvent):
@@ -97,7 +101,7 @@ class RoleReactionEvents(Cog):
             try:
                 await member.remove_roles(role, reason="Роль по реакции")
             except Exception as e:
-                print(f"Ошибка при удалении роли: {e}")
+                logger.error(f"Ошибка при удалении роли: {e}")
     
     @Cog.listener("on_raw_reaction_clear")
     async def on_raw_reaction_clear(self, payload):
@@ -106,7 +110,7 @@ class RoleReactionEvents(Cog):
         
         # Проверяем, есть ли это сообщение в нашем кэше
         if message_id in self.cache:
-            print(f"Обнаружена очистка реакций для сообщения {message_id}, которое есть в кэше роль-реакций")
+            logger.info(f"Обнаружена очистка реакций для сообщения {message_id}, которое есть в кэше роль-реакций")
             
             # Получаем информацию о сообщении
             guild = self.bot.get_guild(payload.guild_id)
@@ -121,7 +125,7 @@ class RoleReactionEvents(Cog):
             try:
                 message = await channel.fetch_message(message_id)
             except Exception as e:
-                print(f"Не удалось получить сообщение {message_id}: {e}")
+                logger.error(f"Не удалось получить сообщение {message_id}: {e}")
                 return
             
             # Ждем немного времени перед восстановлением реакций (5 секунд)
@@ -136,9 +140,9 @@ class RoleReactionEvents(Cog):
                     # Небольшая задержка между добавлением реакций, чтобы избежать рейт-лимитов Discord
                     await asyncio.sleep(0.5)
                 except Exception as e:
-                    print(f"Ошибка при восстановлении реакции {emoji} для сообщения {message_id}: {e}")
+                    logger.error(f"Ошибка при восстановлении реакции {emoji} для сообщения {message_id}: {e}")
             
-            print(f"Восстановлено {reactions_restored} реакций для сообщения {message_id}")
+            logger.info(f"Восстановлено {reactions_restored} реакций для сообщения {message_id}")
 
     @Cog.listener("on_raw_reaction_clear_emoji")
     async def on_raw_reaction_clear_emoji(self, payload):
@@ -148,7 +152,7 @@ class RoleReactionEvents(Cog):
         
         # Проверяем, есть ли эта реакция в нашем кэше
         if message_id in self.cache and emoji in self.cache[message_id]:
-            print(f"Обнаружена очистка реакции {emoji} для сообщения {message_id}, которая есть в кэше роль-реакций")
+            logger.info(f"Обнаружена очистка реакции {emoji} для сообщения {message_id}, которая есть в кэше роль-реакций")
             
             # Получаем информацию о сообщении
             guild = self.bot.get_guild(payload.guild_id)
@@ -163,7 +167,7 @@ class RoleReactionEvents(Cog):
             try:
                 message = await channel.fetch_message(message_id)
             except Exception as e:
-                print(f"Не удалось получить сообщение {message_id}: {e}")
+                logger.error(f"Не удалось получить сообщение {message_id}: {e}")
                 return
             
             # Ждем немного времени перед восстановлением реакции (3 секунды)
@@ -172,9 +176,9 @@ class RoleReactionEvents(Cog):
             # Восстанавливаем реакцию
             try:
                 await message.add_reaction(emoji)
-                print(f"Восстановлена реакция {emoji} для сообщения {message_id}")
+                logger.info(f"Восстановлена реакция {emoji} для сообщения {message_id}")
             except Exception as e:
-                print(f"Ошибка при восстановлении реакции {emoji} для сообщения {message_id}: {e}")
+                logger.error(f"Ошибка при восстановлении реакции {emoji} для сообщения {message_id}: {e}")
     
     async def update_cache(self, message_id, emoji, role_id=None):
         """Обновляет кэш реакций"""

@@ -10,6 +10,10 @@ import os
 from datetime import datetime
 import random
 
+from logger import setup_logger
+
+logger = setup_logger()
+
 # Путь к шрифту и паспортам
 FONT_PATH = "fonts/ttf.ttf"
 FONT_SIZE = 32
@@ -19,7 +23,7 @@ def get_font(font_size=FONT_SIZE):
     try:
         return ImageFont.truetype(FONT_PATH, font_size)
     except:
-        print(f"Ошибка загрузки шрифта {FONT_PATH}, использую системный шрифт")
+        logger.error(f"Ошибка загрузки шрифта {FONT_PATH}, использую системный шрифт")
         return ImageFont.load_default()
 
 async def get_avatar(member):
@@ -96,7 +100,7 @@ class VerificationView(View):
                     if os.path.exists(empty_passport):
                         os.remove(empty_passport)
                 except Exception as e:
-                    print(f"Ошибка при создании паспорта: {e}")
+                    logger.error(f"Ошибка при создании паспорта: {e}")
                     await interaction.response.send_message("Произошла ошибка при создании паспорта. Попробуйте еще раз.", ephemeral=True)
                     return
                 
@@ -132,9 +136,9 @@ class VerificationView(View):
                         welcome_embed.set_image(url="attachment://passport.png")
                         await passport_message.edit(embed=welcome_embed, file=File(passport_path, filename="passport.png"))
                     except Exception as e:
-                        print(f"Ошибка при обновлении сообщения с паспортом: {e}")
+                        logger.error(f"Ошибка при обновлении сообщения с паспортом: {e}")
         except Exception as e:
-            print(f"Ошибка в методе accept: {e}")
+            logger.error(f"Ошибка в методе accept: {e}")
             await interaction.response.send_message("Произошла ошибка при выполнении действия. Попробуйте еще раз.", ephemeral=True)
 
     @button(label="Отклонить", style=ButtonStyle.red)
@@ -153,7 +157,7 @@ class VerificationView(View):
                 if os.path.exists(empty_passport):
                     os.remove(empty_passport)
             except Exception as e:
-                print(f"Ошибка при создании паспорта: {e}")
+                logger.error(f"Ошибка при создании паспорта: {e}")
                 await interaction.response.send_message("Произошла ошибка при создании паспорта. Попробуйте еще раз.", ephemeral=True)
                 return
             
@@ -189,7 +193,7 @@ class VerificationView(View):
                     welcome_embed.set_image(url="attachment://passport.png")
                     await passport_message.edit(embed=welcome_embed, file=File(passport_path, filename="passport.png"))
                 except Exception as e:
-                    print(f"Ошибка при обновлении сообщения с паспортом: {e}")
+                    logger.error(f"Ошибка при обновлении сообщения с паспортом: {e}")
             
             # Отправляем сообщение пользователю и кикаем его
             try:
@@ -198,7 +202,7 @@ class VerificationView(View):
                 pass
             await self.member.kick(reason="Отклонен администрацией")
         except Exception as e:
-            print(f"Ошибка в методе reject: {e}")
+            logger.error(f"Ошибка в методе reject: {e}")
             await interaction.response.send_message("Произошла ошибка при выполнении действия. Попробуйте еще раз.", ephemeral=True)
 
     async def revoke_decision(self, interaction: Interaction):
@@ -244,9 +248,9 @@ class VerificationView(View):
                     welcome_embed.set_image(url="attachment://passport.png")
                     await passport_message.edit(embed=welcome_embed, file=File(passport_path, filename="passport.png"))
                 except Exception as e:
-                    print(f"Ошибка при обновлении сообщения с паспортом: {e}")
+                    logger.error(f"Ошибка при обновлении сообщения с паспортом: {e}")
         except Exception as e:
-            print(f"Ошибка в методе revoke_decision: {e}")
+            logger.error(f"Ошибка в методе revoke_decision: {e}")
             await interaction.response.send_message("Произошла ошибка при отзыве решения. Попробуйте еще раз.", ephemeral=True)
 
     async def create_stamped_passport(self, member, accepted: bool):
@@ -319,7 +323,7 @@ class VerificationView(View):
             img.save(passport_path)
             return passport_path
         except Exception as e:
-            print(f"Ошибка при создании паспорта: {e}")
+            logger.error(f"Ошибка при создании паспорта: {e}")
             raise
 
 class MemberJoinEvent(Cog):
@@ -357,7 +361,7 @@ class MemberJoinEvent(Cog):
                 passport_message = await welcome_channel.send(embed=welcome_embed, file=File(passport_path, filename="passport.png"))
                 view.passport_message_id = passport_message.id  # Сохраняем ID сообщения
         except Exception as e:
-            print(f"Ошибка при создании пустого паспорта: {e}")
+            logger.error(f"Ошибка при создании пустого паспорта: {e}")
         
         # Отправляем сообщение с кнопками в канал верификации
         verification_channel = self.bot.get_channel(self.verification_channel_id)
@@ -414,7 +418,7 @@ class MemberJoinEvent(Cog):
             img.save(passport_path)
             return passport_path
         except Exception as e:
-            print(f"Ошибка при создании пустого паспорта: {e}")
+            logger.error(f"Ошибка при создании пустого паспорта: {e}")
             raise
 
 def setup(bot: Bot):
