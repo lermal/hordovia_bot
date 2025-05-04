@@ -1,8 +1,9 @@
 from nextcord.ext import commands
 from logger import setup_logger
 from database import Database
-from nextcord.ui import View
+from nextcord.ui import View, Modal
 from config import GUILD_IDS
+from utils.settings_manager import SettingsManager
 import traceback
 import nextcord
 import asyncio
@@ -536,6 +537,7 @@ class PrivateRoomsCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.db = Database()
+        self.settings_manager = SettingsManager()
         self.guild_data = {}
         self.lock = asyncio.Lock() 
 
@@ -639,9 +641,18 @@ class PrivateRoomsCog(commands.Cog):
             if not category or not isinstance(category, nextcord.CategoryChannel):
                 raise ValueError("Категория не найдена")
 
+            # Получаем настройки приватных комнат
+            settings = self.settings_manager.get_all_settings().get("private_rooms", {})
+            
+            # Формируем название комнаты
+            room_name = settings.get("room_name_template", "{user} - комната").format(
+                user=member.display_name
+            )
+
             new_channel = await guild.create_voice_channel(
-                name=f"Борщерум {member.display_name}",
+                name=room_name,
                 category=category,
+                user_limit=settings.get("default_user_limit", 0),
                 overwrites={
                     guild.default_role: nextcord.PermissionOverwrite(view_channel=True, connect=False),
                     member: nextcord.PermissionOverwrite(
@@ -757,10 +768,14 @@ class SetupModal(nextcord.ui.Modal):
         self.bot = bot
         self.db = db
         self.guild_data = guild_data
+        self.settings_manager = SettingsManager()
+        
+        # Получаем настройки приватных комнат
+        settings = self.settings_manager.get_all_settings().get("private_rooms", {})
         
         self.category_name = nextcord.ui.TextInput(
             label="Название категории",
-            placeholder="Приватные комнаты",
+            placeholder=settings.get("default_category_name", "Приватные комнаты"),
             min_length=1,
             max_length=100,
             required=True
@@ -769,7 +784,7 @@ class SetupModal(nextcord.ui.Modal):
         
         self.create_channel_name = nextcord.ui.TextInput(
             label="Название канала создания",
-            placeholder="➕ Создать комнату",
+            placeholder=settings.get("default_create_channel_name", "➕ Создать комнату"),
             min_length=1,
             max_length=100,
             required=True

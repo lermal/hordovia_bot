@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw, ImageFont
 import os
 from datetime import datetime
 import random
+from utils.settings_manager import SettingsManager
 
 from logger import setup_logger
 
@@ -47,8 +48,13 @@ class VerificationView(View):
         super().__init__(timeout=timeout)
         self.bot = bot
         self.member = member
-        self.member_role_id = 1356018502498123956
-        self.admin_role_ids = [1356018502498123956]  # Список ID ролей, которые могут принимать/отклонять
+        self.settings_manager = SettingsManager()
+        
+        # Получаем настройки верификации
+        settings = self.settings_manager.get_all_settings().get("verification", {})
+        self.member_role_id = settings.get("member_role_id", 0)
+        self.admin_role_ids = settings.get("admin_role_ids", [])
+        
         self.passport_message_id = None  # ID сообщения с паспортом в канале "Добро пожаловать"
         self.is_revoke_state = False
 
@@ -329,8 +335,7 @@ class VerificationView(View):
 class MemberJoinEvent(Cog):
     def __init__(self, bot: Bot):
         self.bot = bot
-        self.welcome_channel_id = 1356017783946874920
-        self.verification_channel_id = 1356018046820421632
+        self.settings_manager = SettingsManager()
         
         # Создаем директорию для паспортов, если её нет
         if not os.path.exists(PASSPORTS_DIR):
@@ -338,6 +343,11 @@ class MemberJoinEvent(Cog):
 
     @Cog.listener()
     async def on_member_join(self, member):
+        # Получаем настройки верификации
+        settings = self.settings_manager.get_all_settings().get("verification", {})
+        welcome_channel_id = settings.get("welcome_channel_id", 0)
+        verification_channel_id = settings.get("verification_channel_id", 0)
+        
         # Проверяем существующий паспорт
         view = VerificationView(self.bot, member)
         if await view.check_existing_passport(member):
@@ -350,7 +360,7 @@ class MemberJoinEvent(Cog):
         try:
             passport_path = await self.create_empty_passport(member)
             # Отправляем сообщение с паспортом в канал приветствия
-            welcome_channel = self.bot.get_channel(self.welcome_channel_id)
+            welcome_channel = self.bot.get_channel(welcome_channel_id)
             if welcome_channel:
                 welcome_embed = Embed(
                     title="Welcome to Hordovia!",
@@ -364,7 +374,7 @@ class MemberJoinEvent(Cog):
             logger.error(f"Ошибка при создании пустого паспорта: {e}")
         
         # Отправляем сообщение с кнопками в канал верификации
-        verification_channel = self.bot.get_channel(self.verification_channel_id)
+        verification_channel = self.bot.get_channel(verification_channel_id)
         if verification_channel:
             await verification_channel.send(embed=embed, view=view)
 
