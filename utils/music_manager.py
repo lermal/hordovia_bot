@@ -680,8 +680,8 @@ class MusicBot:
         if error:
             logger.error(f"Ошибка при воспроизведении: {error}")
         
-        # Используем существующий event loop
-        self.loop.create_task(self._after_track_finished())
+        # Используем asyncio.run_coroutine_threadsafe для запуска корутины из другого потока
+        asyncio.run_coroutine_threadsafe(self._after_track_finished(), self.loop)
     
     async def _cleanup_previous_track(self):
         """Удаляет файл предыдущего трека"""
@@ -1237,7 +1237,7 @@ class MusicManager:
         self.queues = {}
         self.current_tracks = {}
         self.message_links = {}
-        self.loop = asyncio.get_event_loop()
+        self.loop = asyncio.get_event_loop() if asyncio.get_event_loop().is_running() else asyncio.new_event_loop()
         
         # Автоматический поиск ffmpeg
         ffmpeg_path = None
