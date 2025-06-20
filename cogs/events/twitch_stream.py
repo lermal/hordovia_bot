@@ -163,51 +163,89 @@ class TwitchStream(Cog):
 
             # Формируем запрос для всех стримеров
             user_logins = [channel for channel, data in streamers.items() if data["enabled"]]
+            
+            # Фильтруем пустые логины
+            user_logins = [login for login in user_logins if login and login.strip()]
+            
             if not user_logins:
+                logger.debug("Twitch: Нет активных стримеров для проверки")
                 return
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"https://api.twitch.tv/helix/streams?user_login={','.join(user_logins)}",
-                    headers={
-                        'Client-ID': TWITCH_CLIENT_ID,
-                        'Authorization': f'Bearer {self.access_token}'
-                    }
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        active_streams = {stream['user_login'].lower(): stream for stream in data['data']}
-                        
-                        # Проверяем каждый стримера
-                        for channel, streamer_data in streamers.items():
-                            if not streamer_data["enabled"]:
-                                continue
-                                
-                            is_streaming = channel in active_streams
-                            was_streaming = channel in self.streaming
-                            
-                            if is_streaming and not was_streaming:
-                                logger.info(f"Twitch: Стрим начался у {channel}")
-                                await self.on_stream_start(channel, active_streams[channel], streamer_data["description"])
-                                self.streaming[channel] = True
-                                self.save_state()
-                            elif not is_streaming and was_streaming:
-                                logger.info(f"Twitch: Стрим закончился у {channel}")
-                                await self.on_stream_end(channel, streamer_data["description"])
-                                del self.streaming[channel]
-                                self.save_state()
-                            elif is_streaming and was_streaming:
-                                # Проверяем изменение категории
-                                current_category = active_streams[channel]['game_name']
-                                if current_category != self.stream_categories.get(channel):
-                                    logger.info(f"Twitch: У {channel} изменилась категория на {current_category}")
-                                    await self.update_stream_category(channel, active_streams[channel])
-                    else:
-                        logger.error(f"Twitch: Ошибка проверки стрима: {response.status}")
+            # Разбиваем на части, если стримеров больше 100 (лимит Twitch API)
+            chunk_size = 100
+            user_login_chunks = [user_logins[i:i + chunk_size] for i in range(0, len(user_logins), chunk_size)]
+            
+            active_streams = {}
+            
+            for chunk in user_login_chunks:
+                await self._check_stream_chunk(chunk, active_streams, streamers)
+            
+            # Обрабатываем результаты после всех чанков
+            for channel, streamer_data in streamers.items():
+                if not streamer_data["enabled"]:
+                    continue
+                    
+                is_streaming = channel in active_streams
+                was_streaming = channel in self.streaming
+                
+                if is_streaming and not was_streaming:
+                    logger.info(f"Twitch: Стрим начался у {channel}")
+                    await self.on_stream_start(channel, active_streams[channel], streamer_data["description"])
+                    self.streaming[channel] = True
+                    self.save_state()
+                elif not is_streaming and was_streaming:
+                    logger.info(f"Twitch: Стрим закончился у {channel}")
+                    await self.on_stream_end(channel, streamer_data["description"])
+                    del self.streaming[channel]
+                    self.save_state()
+                elif is_streaming and was_streaming:
+                    # Проверяем изменение категории
+                    current_category = active_streams[channel]['game_name']
+                    if current_category != self.stream_categories.get(channel):
+                        logger.info(f"Twitch: У {channel} изменилась категория на {current_category}")
+                        await self.update_stream_category(channel, active_streams[channel])
         except Exception as e:
             logger.error(f"Twitch: Ошибка при проверке стрима: {e}")
             import traceback
             logger.error(f"Twitch: Полный стек ошибки: {traceback.format_exc()}")
+
+    async def _check_stream_chunk(self, chunk, active_streams, streamers):
+        async with aiohttp.ClientSession() as session:
+            # Формируем URL запроса
+            url = f"https://api.twitch.tv/helix/streams?user_login={','.join(chunk)}"
+            headers = {
+                'Client-ID': TWITCH_CLIENT_ID,
+                'Authorization': f'Bearer {self.access_token}'
+            }
+            
+            logger.debug(f"Twitch: Отправляем запрос к {url}")
+            logger.debug(f"Twitch: Заголовки: {headers}")
+            logger.debug(f"Twitch: Стримеры для проверки: {chunk}")
+            
+            async with session.get(url, headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    active_streams.update({stream['user_login'].lower(): stream for stream in data['data']})
+                else:
+                    error_text = await response.text()
+                    logger.error(f"Twitch: Ошибка проверки стрима: {response.status}")
+                    logger.error(f"Twitch: URL запроса: {url}")
+                    logger.error(f"Twitch: Заголовки запроса: {headers}")
+                    logger.error(f"Twitch: Ответ сервера: {error_text}")
+                    
+                    # Если токен истек или недействителен, получаем новый
+                    if response.status == 401:
+                        logger.info("Twitch: Токен недействителен, получаем новый")
+                        await self.get_access_token()
+                    elif response.status == 400:
+                        logger.error("Twitch: Неправильный запрос. Проверьте параметры запроса.")
+                        # Проверяем, не слишком ли много стримеров в запросе
+                        if len(chunk) > 100:
+                            logger.error("Twitch: Слишком много стримеров в одном запросе (максимум 100)")
+                        # Проверяем, нет ли пустых логинов
+                        empty_logins = [login for login in chunk if not login.strip()]
+                        if empty_logins:
+                            logger.error(f"Twitch: Найдены пустые логины: {empty_logins}")
 
     async def get_user_avatar(self, login):
         """Получить URL аватарки стримера по логину с кэшированием"""
