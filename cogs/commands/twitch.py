@@ -20,29 +20,48 @@ class AddStreamerModal(ui.Modal):
             max_length=200,
             style=TextInputStyle.paragraph
         )
+        self.notification_text = ui.TextInput(
+            label="Текст уведомления (упоминания, пинги)",
+            required=False,
+            max_length=500,
+            style=TextInputStyle.paragraph,
+            placeholder="Например: <@&123456789> Стрим начался!"
+        )
         self.add_item(self.login)
         self.add_item(self.description)
+        self.add_item(self.notification_text)
     async def callback(self, interaction: Interaction):
         login = self.login.value.strip().lower()
         description = self.description.value.strip()
-        await self.callback_func(interaction, login, description)
+        notification_text = self.notification_text.value.strip()
+        await self.callback_func(interaction, login, description, notification_text)
 
-class EditDescriptionModal(ui.Modal):
-    def __init__(self, streamer, current_description, callback):
-        super().__init__(title=f"Редактировать описание: {streamer}")
+class EditStreamerModal(ui.Modal):
+    def __init__(self, streamer, current_description, current_notification_text, callback):
+        super().__init__(title=f"Редактировать настройки: {streamer}")
         self.streamer = streamer
         self.callback_func = callback
         self.description = ui.TextInput(
-            label="Новое описание",
+            label="Описание",
             style=TextInputStyle.paragraph,
             default_value=current_description,
             required=False,
             max_length=200
         )
+        self.notification_text = ui.TextInput(
+            label="Текст уведомления (упоминания, пинги)",
+            style=TextInputStyle.paragraph,
+            default_value=current_notification_text,
+            required=False,
+            max_length=500,
+            placeholder="Например: <@&123456789> Стрим начался!"
+        )
         self.add_item(self.description)
+        self.add_item(self.notification_text)
     async def callback(self, interaction: Interaction):
         new_description = self.description.value
-        await self.callback_func(interaction, self.streamer, new_description)
+        new_notification_text = self.notification_text.value
+        await self.callback_func(interaction, self.streamer, new_description, new_notification_text)
 
 # View только с выпадающим списком (начальное состояние)
 class SelectStreamerView(ui.View):
@@ -105,7 +124,7 @@ class StreamerActionsView(ui.View):
             placeholder="Выберите действие...",
             options=[
                 SelectOption(label="◀️ Вернуться к списку", value="back", description="Вернуться к полному списку стримеров"),
-                SelectOption(label="✏️ Изменить описание", value="edit", description="Изменить описание стримера"),
+                SelectOption(label="✏️ Изменить настройки", value="edit", description="Изменить описание и текст уведомления"),
                 SelectOption(label="🔄 Вкл/Выкл уведомления", value="toggle", description="Включить/выключить уведомления"),
                 SelectOption(label="🗑️ Удалить стримера", value="delete", description="Удалить стримера из списка")
             ]
@@ -125,8 +144,9 @@ class StreamerActionsView(ui.View):
         elif action == "edit":
             # Открываем модальное окно для редактирования описания
             current_description = self.streamers[self.selected].get("description", "")
+            current_notification_text = self.streamers[self.selected].get("notification_text", "")
             await interaction.response.send_modal(
-                EditDescriptionModal(self.selected, current_description, self.cog.edit_description_callback)
+                EditStreamerModal(self.selected, current_description, current_notification_text, self.cog.edit_description_callback)
             )
             
         elif action == "toggle":
@@ -226,6 +246,13 @@ class TwitchCommands(Cog):
             embed.add_field(name="Статус уведомлений", value=status, inline=True)
             embed.add_field(name="Канал", value=f"[Twitch.tv/{selected}](https://twitch.tv/{selected})", inline=True)
             
+            # Добавляем поле с текстом уведомления
+            notification_text = streamer_data.get("notification_text", "")
+            if notification_text:
+                embed.add_field(name="Текст уведомления", value=f"```{notification_text}```", inline=False)
+            else:
+                embed.add_field(name="Текст уведомления", value="Не настроен", inline=False)
+            
             # Получаем и устанавливаем аватарку
             avatar_url = await self.get_user_avatar(selected)
             if avatar_url:
@@ -250,24 +277,29 @@ class TwitchCommands(Cog):
             
         for channel, data in self.streamers.items():
             status = "Включен" if data["enabled"] else "Выключен"
+            notification_status = "📢" if data.get("notification_text") else "🔇"
             
-            name = f"@{channel} | {status}"
+            name = f"@{channel} | {status} {notification_status}"
+            description = data.get('description', 'Нет описания')
+            if data.get("notification_text"):
+                description += f"\n📢 Уведомления настроены"
+            
             embed.add_field(
                 name=name,
-                value=f"Описание: {data['description']}",
+                value=description,
                 inline=False
             )
             
         return embed
             
-    async def add_streamer_callback(self, interaction: Interaction, login, description):
+    async def add_streamer_callback(self, interaction: Interaction, login, description, notification_text):
         self.load_streamers()
         
         if login in self.streamers:
             await interaction.response.send_message(f"❌ Стример **{login}** уже есть в списке.", ephemeral=True)
             return
             
-        self.streamers[login] = {"description": description or f"Стрим {login}", "enabled": True}
+        self.streamers[login] = {"description": description or f"Стрим {login}", "enabled": True, "notification_text": notification_text}
         self.save_streamers()
         
         # Создаем обновленный интерфейс с уведомлением в footer
@@ -320,7 +352,7 @@ class TwitchCommands(Cog):
         # Отвечаем
         await interaction.response.edit_message(embed=embed, view=view)
             
-    async def edit_description_callback(self, interaction: Interaction, streamer, new_description):
+    async def edit_description_callback(self, interaction: Interaction, streamer, new_description, new_notification_text):
         self.load_streamers()
         
         # Проверяем есть ли стример в списке
@@ -330,11 +362,12 @@ class TwitchCommands(Cog):
             
         # Обновляем описание
         self.streamers[streamer]["description"] = new_description
+        self.streamers[streamer]["notification_text"] = new_notification_text
         self.save_streamers()
         
         # Создаем обновленный интерфейс с уведомлением в footer
         embed = await self.create_twitch_list_embed(selected=streamer)
-        embed.set_footer(text=f"✅ Описание для {streamer} успешно обновлено!")
+        embed.set_footer(text=f"✅ Настройки для {streamer} успешно обновлены!")
         view = StreamerActionsView(self, self.streamers, selected=streamer)
         
         # Отвечаем на взаимодействие редактированием сообщения
