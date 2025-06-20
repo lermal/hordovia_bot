@@ -14,7 +14,12 @@ class AddStreamerModal(ui.Modal):
         super().__init__(title="Добавить стримера")
         self.callback_func = callback
         self.login = ui.TextInput(label="Логин стримера", required=True, max_length=50)
-        self.description = ui.TextInput(label="Описание", required=False, max_length=200)
+        self.description = ui.TextInput(
+            label="Описание", 
+            required=False, 
+            max_length=200,
+            style=TextInputStyle.paragraph
+        )
         self.add_item(self.login)
         self.add_item(self.description)
     async def callback(self, interaction: Interaction):
