@@ -211,8 +211,12 @@ class TwitchStream(Cog):
 
     async def _check_stream_chunk(self, chunk, active_streams, streamers):
         async with aiohttp.ClientSession() as session:
-            # Формируем URL запроса
-            url = f"https://api.twitch.tv/helix/streams?user_login={','.join(chunk)}"
+            # Формируем URL запроса с повторяющимися параметрами user_login
+            params = []
+            for login in chunk:
+                params.append(f"user_login={login}")
+            url = f"https://api.twitch.tv/helix/streams?{'&'.join(params)}"
+            
             headers = {
                 'Client-ID': TWITCH_CLIENT_ID,
                 'Authorization': f'Bearer {self.access_token}'
