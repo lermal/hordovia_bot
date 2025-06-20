@@ -385,7 +385,16 @@ class MemberJoinEvent(Cog):
             # Формируем пинг админских ролей
             admin_ping = ""
             if self.admin_role_ids:
-                admin_ping = " ".join([f"<@&{role_id}>" for role_id in self.admin_role_ids])
+                # Проверяем тип данных - может быть список или число
+                if isinstance(self.admin_role_ids, list):
+                    role_ids = self.admin_role_ids
+                elif isinstance(self.admin_role_ids, int):
+                    role_ids = [self.admin_role_ids]
+                else:
+                    role_ids = []
+                
+                if role_ids:
+                    admin_ping = " ".join([f"<@&{role_id}>" for role_id in role_ids])
             
             # Отправляем сообщение с пингом админов
             if admin_ping:
