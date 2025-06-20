@@ -59,8 +59,20 @@ class VerificationView(View):
         self.is_revoke_state = False
 
     async def interaction_check(self, interaction: Interaction) -> bool:
+        # Обновляем настройки перед проверкой (на случай, если они изменились)
+        settings = self.settings_manager.get_all_settings().get("verification", {})
+        admin_role_ids = settings.get("admin_role_ids", [])
+        
         # Проверяем, есть ли у пользователя нужные роли
-        has_permission = any(role.id in self.admin_role_ids for role in interaction.user.roles)
+        # Обеспечиваем правильную обработку типов для admin_role_ids
+        if isinstance(admin_role_ids, int):
+            admin_role_ids = [admin_role_ids]
+        elif isinstance(admin_role_ids, list):
+            admin_role_ids = admin_role_ids
+        else:
+            admin_role_ids = []
+        
+        has_permission = any(role.id in admin_role_ids for role in interaction.user.roles)
         if not has_permission:
             await interaction.response.send_message("У вас нет прав для выполнения этого действия!", ephemeral=True)
             return False
@@ -298,7 +310,7 @@ class VerificationView(View):
             # Добавляем информацию на паспорт
             draw.text((40, img.height - 390), member.name, font=get_font(64), fill="#584a48")
             draw.text((370, img.height - 338), f"{member.created_at.strftime('%d %B, %Y')}", font=get_font(48), fill="#584a48")
-            draw.text((370, img.height - 300), f"{member.joined_at.strftime('%d %B, %Y')}", font=get_font(48), fill="#584a48")
+            draw.text((370, img.height - 285), f"{member.joined_at.strftime('%d %B, %Y')}", font=get_font(48), fill="#584a48")
             draw.text((40, img.height - 83), f"{member.id}", font=get_font(60), fill="#584a48")
             
             # Добавляем печать
@@ -446,7 +458,7 @@ class MemberJoinEvent(Cog):
             # Добавляем информацию на паспорт
             draw.text((40, img.height - 390), member.name, font=get_font(64), fill="#584a48")
             draw.text((370, img.height - 338), f"{member.created_at.strftime('%d %B, %Y')}", font=get_font(48), fill="#584a48")
-            draw.text((370, img.height - 300), f"{member.joined_at.strftime('%d %B, %Y')}", font=get_font(48), fill="#584a48")
+            draw.text((370, img.height - 285), f"{member.joined_at.strftime('%d %B, %Y')}", font=get_font(48), fill="#584a48")
             draw.text((40, img.height - 83), f"{member.id}", font=get_font(60), fill="#584a48")
             
             # Сохраняем результат
