@@ -148,6 +148,10 @@ class TwitchStream(Cog):
     async def check_stream_status(self):
         """Проверка статуса стрима"""
         try:
+            # Добавляем диагностическое логирование
+            logger.debug(f"Twitch: TWITCH_CHECK_INTERVAL = {TWITCH_CHECK_INTERVAL} (тип: {type(TWITCH_CHECK_INTERVAL)})")
+            logger.debug(f"Twitch: TWITCH_NOTIFICATION_CHANNEL_ID = {TWITCH_NOTIFICATION_CHANNEL_ID} (тип: {type(TWITCH_NOTIFICATION_CHANNEL_ID)})")
+            
             # Проверяем срок действия токена
             if not self.access_token or datetime.now() >= self.token_expires_at:
                 await self.get_access_token()
@@ -202,6 +206,8 @@ class TwitchStream(Cog):
                         logger.error(f"Twitch: Ошибка проверки стрима: {response.status}")
         except Exception as e:
             logger.error(f"Twitch: Ошибка при проверке стрима: {e}")
+            import traceback
+            logger.error(f"Twitch: Полный стек ошибки: {traceback.format_exc()}")
 
     async def get_user_avatar(self, login):
         """Получить URL аватарки стримера по логину с кэшированием"""
@@ -346,10 +352,14 @@ class TwitchStream(Cog):
         
         while not self.bot.is_closed():
             try:
+                logger.debug(f"Twitch: Начинаем проверку стримов, интервал: {TWITCH_CHECK_INTERVAL}")
                 await self.check_stream_status()
+                logger.debug(f"Twitch: Проверка завершена, ожидаем {TWITCH_CHECK_INTERVAL} секунд")
                 await asyncio.sleep(TWITCH_CHECK_INTERVAL)  # Интервал проверки в секундах
             except Exception as e:
                 logger.error(f"Twitch: Ошибка в цикле проверки: {e}")
+                import traceback
+                logger.error(f"Twitch: Полный стек ошибки в цикле: {traceback.format_exc()}")
                 await asyncio.sleep(60)  # При ошибке ждем минуту перед следующей попыткой
 
     async def update_stream_category(self, channel, stream_data):
