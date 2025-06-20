@@ -298,7 +298,7 @@ class VerificationView(View):
             # Добавляем информацию на паспорт
             draw.text((40, img.height - 390), member.name, font=get_font(64), fill="#584a48")
             draw.text((370, img.height - 338), f"{member.created_at.strftime('%d %B, %Y')}", font=get_font(48), fill="#584a48")
-            draw.text((370, img.height - 245), f"{member.joined_at.strftime('%d %B, %Y')}", font=get_font(48), fill="#584a48")
+            draw.text((370, img.height - 300), f"{member.joined_at.strftime('%d %B, %Y')}", font=get_font(48), fill="#584a48")
             draw.text((40, img.height - 83), f"{member.id}", font=get_font(60), fill="#584a48")
             
             # Добавляем печать
