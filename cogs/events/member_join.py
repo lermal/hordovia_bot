@@ -298,7 +298,7 @@ class VerificationView(View):
             # Добавляем информацию на паспорт
             draw.text((40, img.height - 390), member.name, font=get_font(64), fill="#584a48")
             draw.text((370, img.height - 338), f"{member.created_at.strftime('%d %B, %Y')}", font=get_font(48), fill="#584a48")
-            draw.text((370, img.height - 245), f"{member.joined_at.strftime('%d %B, %Y')}", font=get_font(48), fill="#584a48")
+            draw.text((370, img.height - 300), f"{member.joined_at.strftime('%d %B, %Y')}", font=get_font(48), fill="#584a48")
             draw.text((40, img.height - 83), f"{member.id}", font=get_font(60), fill="#584a48")
             
             # Добавляем печать
@@ -337,14 +337,20 @@ class MemberJoinEvent(Cog):
         self.bot = bot
         self.settings_manager = SettingsManager()
         
+        # Получаем настройки верификации
+        settings = self.settings_manager.get_all_settings().get("verification", {})
+        self.admin_role_ids = settings.get("admin_role_ids", [])
+        
         # Создаем директорию для паспортов, если её нет
         if not os.path.exists(PASSPORTS_DIR):
             os.makedirs(PASSPORTS_DIR)
 
     @Cog.listener()
     async def on_member_join(self, member):
-        # Получаем настройки верификации
+        # Обновляем настройки верификации (на случай, если они изменились)
         settings = self.settings_manager.get_all_settings().get("verification", {})
+        self.admin_role_ids = settings.get("admin_role_ids", [])
+        
         welcome_channel_id = settings.get("welcome_channel_id", 0)
         verification_channel_id = settings.get("verification_channel_id", 0)
         
@@ -376,7 +382,18 @@ class MemberJoinEvent(Cog):
         # Отправляем сообщение с кнопками в канал верификации
         verification_channel = self.bot.get_channel(verification_channel_id)
         if verification_channel:
-            await verification_channel.send(embed=embed, view=view)
+            # Формируем пинг админских ролей
+            admin_ping = ""
+            if self.admin_role_ids:
+                admin_ping = " ".join([f"<@&{role_id}>" for role_id in self.admin_role_ids])
+            
+            # Отправляем сообщение с пингом админов
+            if admin_ping:
+                message_content = f":weeeee: Новый Хордовец {member.mention} прибыл !\n\nВызываем {admin_ping} !"
+            else:
+                message_content = f":weeeee: Новый Хордовец {member.mention} прибыл !"
+            
+            await verification_channel.send(message_content, embed=embed, view=view)
 
     async def create_verification_embed(self, member):
         embed = Embed(
