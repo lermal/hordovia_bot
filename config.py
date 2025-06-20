@@ -24,12 +24,12 @@ AUTO_RELOAD = True
 # Twitch configuration
 TWITCH_CLIENT_ID = os.getenv("TWITCH_CLIENT_ID")
 TWITCH_CLIENT_SECRET = os.getenv("TWITCH_CLIENT_SECRET")
-TWITCH_NOTIFICATION_CHANNEL_ID = settings_manager.get_setting("twitch", "notification_channel") or int(os.getenv("TWITCH_NOTIFICATION_CHANNEL_ID", 0))
+TWITCH_NOTIFICATION_CHANNEL_ID = int(settings_manager.get_setting("twitch", "notification_channel") or os.getenv("TWITCH_NOTIFICATION_CHANNEL_ID", 0))
 TWITCH_CHECK_INTERVAL = int(settings_manager.get_setting("twitch", "check_interval") or os.getenv("TWITCH_CHECK_INTERVAL", 15))
 
 # Музыкальные настройки
 AUDIO_FORMAT = settings_manager.get_setting("music", "audio_format") or "mp3"
-AUDIO_QUALITY = settings_manager.get_setting("music", "audio_quality") or 192
+AUDIO_QUALITY = int(settings_manager.get_setting("music", "audio_quality") or 192)
 FFMPEG_PATH = settings_manager.get_setting("music", "ffmpeg_path") or ""
 
 # Общие настройки
