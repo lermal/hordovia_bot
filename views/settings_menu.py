@@ -11,8 +11,20 @@ from typing import Optional, Dict, Any
 import logging
 from nextcord.ext import commands
 from utils.settings_manager import SettingsManager
+from logger import setup_logger
 
-logger = logging.getLogger(__name__)
+logger = setup_logger()
+
+def format_setting_value(value):
+    """Форматирует значение настройки для отображения"""
+    if value is None:
+        return ""
+    elif isinstance(value, (list, tuple)):
+        return ", ".join(str(item) for item in value)
+    elif isinstance(value, bool):
+        return "Да" if value else "Нет"
+    else:
+        return str(value)
 
 # Модальное окно для изменения настройки
 class EditSettingModal(Modal):
@@ -37,9 +49,12 @@ class EditSettingModal(Modal):
         try:
             new_value = self.value_input.value
             
+            # Преобразуем значение в правильный тип данных
+            converted_value = self._convert_value_to_proper_type(self.setting_key, new_value)
+            
             # Обновляем настройку
             settings_manager = SettingsManager()
-            settings_manager.set_setting(self.category, self.setting_key, new_value)
+            settings_manager.set_setting(self.category, self.setting_key, converted_value)
             
             # Если это настройки приватных каналов, применяем изменения
             if self.category == "private_rooms":
@@ -65,6 +80,56 @@ class EditSettingModal(Modal):
                 "❌ Произошла ошибка при сохранении настройки",
                 ephemeral=True
             )
+    
+    def _convert_value_to_proper_type(self, setting_key: str, value: str):
+        """Преобразует строковое значение в правильный тип данных"""
+        if not value or value.strip() == "":
+            return value
+        
+        # Настройки, которые должны быть числами
+        numeric_settings = {
+            "notification_channel", "check_interval", "audio_quality", 
+            "default_user_limit", "welcome_channel_id", "verification_channel_id", 
+            "member_role_id", "category_id", "create_channel_id"
+        }
+        
+        # Настройки, которые должны быть списками
+        list_settings = {"admin_role_ids", "load_exceptions"}
+        
+        # Настройки, которые должны быть булевыми значениями
+        boolean_settings = {"enabled", "auto_reload"}
+        
+        if setting_key in numeric_settings:
+            try:
+                return int(value)
+            except ValueError:
+                try:
+                    return float(value)
+                except ValueError:
+                    logger.warning(f"Не удалось преобразовать '{value}' в число для настройки {setting_key}")
+                    return value
+        
+        elif setting_key in list_settings:
+            try:
+                # Пытаемся разобрать как JSON список
+                import json
+                return json.loads(value)
+            except (json.JSONDecodeError, ValueError):
+                # Если не получилось, возвращаем как список с одним элементом
+                return [value] if value else []
+        
+        elif setting_key in boolean_settings:
+            value_lower = value.lower()
+            if value_lower in ("true", "1", "yes", "on"):
+                return True
+            elif value_lower in ("false", "0", "no", "off"):
+                return False
+            else:
+                logger.warning(f"Не удалось преобразовать '{value}' в булево значение для настройки {setting_key}")
+                return value
+        
+        # Для остальных настроек возвращаем как строку
+        return value
 
 # View для выбора категории настроек
 class SettingsCategoryView(View):
@@ -127,7 +192,7 @@ class SettingsCategoryView(View):
             for key, value in current_settings.items():
                 embed.add_field(
                     name=key,
-                    value=str(value) if value else "Не установлено",
+                    value=format_setting_value(value),
                     inline=False
                 )
             
@@ -194,7 +259,7 @@ class MusicSettingsView(View):
             setting_key = self.settings_select.values[0]
             settings_manager = SettingsManager()
             current_settings = settings_manager.get_all_settings().get("music", {})
-            current_value = str(current_settings.get(setting_key, ""))
+            current_value = format_setting_value(current_settings.get(setting_key, ""))
             
             modal = EditSettingModal(
                 setting_key=setting_key,
@@ -242,7 +307,7 @@ class TwitchSettingsView(View):
             setting_key = self.settings_select.values[0]
             settings_manager = SettingsManager()
             current_settings = settings_manager.get_all_settings().get("twitch", {})
-            current_value = str(current_settings.get(setting_key, ""))
+            current_value = format_setting_value(current_settings.get(setting_key, ""))
             
             modal = EditSettingModal(
                 setting_key=setting_key,
@@ -290,7 +355,7 @@ class GeneralSettingsView(View):
             setting_key = self.settings_select.values[0]
             settings_manager = SettingsManager()
             current_settings = settings_manager.get_all_settings().get("general", {})
-            current_value = str(current_settings.get(setting_key, ""))
+            current_value = format_setting_value(current_settings.get(setting_key, ""))
             
             modal = EditSettingModal(
                 setting_key=setting_key,
@@ -350,7 +415,7 @@ class PrivateRoomsSettingsView(View):
             setting_key = self.settings_select.values[0]
             settings_manager = SettingsManager()
             current_settings = settings_manager.get_all_settings().get("private_rooms", {})
-            current_value = str(current_settings.get(setting_key, ""))
+            current_value = format_setting_value(current_settings.get(setting_key, ""))
             
             modal = EditSettingModal(
                 setting_key=setting_key,
@@ -410,7 +475,7 @@ class VerificationSettingsView(View):
             setting_key = self.settings_select.values[0]
             settings_manager = SettingsManager()
             current_settings = settings_manager.get_all_settings().get("verification", {})
-            current_value = str(current_settings.get(setting_key, ""))
+            current_value = format_setting_value(current_settings.get(setting_key, ""))
             
             modal = EditSettingModal(
                 setting_key=setting_key,
