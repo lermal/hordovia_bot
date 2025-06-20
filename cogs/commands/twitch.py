@@ -28,8 +28,8 @@ class AddStreamerModal(ui.Modal):
             style=TextInputStyle.paragraph
         )
         self.add_item(self.login)
-        self.add_item(self.description)
         self.add_item(self.notification_text)
+        self.add_item(self.description)
     async def callback(self, interaction: Interaction):
         login = self.login.value.strip().lower()
         description = self.description.value.strip()
@@ -56,8 +56,8 @@ class EditStreamerModal(ui.Modal):
             required=False,
             max_length=200
         )
-        self.add_item(self.description)
         self.add_item(self.notification_text)
+        self.add_item(self.description)
     async def callback(self, interaction: Interaction):
         new_description = self.description.value
         new_notification_text = self.notification_text.value
