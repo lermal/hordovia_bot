@@ -388,7 +388,11 @@ class MemberJoinEvent(Cog):
                 admin_ping = " ".join([f"<@&{role_id}>" for role_id in self.admin_role_ids])
             
             # Отправляем сообщение с пингом админов
-            message_content = f"{admin_ping}\nПользователь {member.mention} присоединился к серверу." if admin_ping else f"Пользователь {member.mention} присоединился к серверу."
+            if admin_ping:
+                message_content = f":weeeee: Новый Хордовец {member.mention} прибыл !\n\nВызываем {admin_ping} !"
+            else:
+                message_content = f":weeeee: Новый Хордовец {member.mention} прибыл !"
+            
             await verification_channel.send(message_content, embed=embed, view=view)
 
     async def create_verification_embed(self, member):
