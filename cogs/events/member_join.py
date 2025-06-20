@@ -337,14 +337,20 @@ class MemberJoinEvent(Cog):
         self.bot = bot
         self.settings_manager = SettingsManager()
         
+        # Получаем настройки верификации
+        settings = self.settings_manager.get_all_settings().get("verification", {})
+        self.admin_role_ids = settings.get("admin_role_ids", [])
+        
         # Создаем директорию для паспортов, если её нет
         if not os.path.exists(PASSPORTS_DIR):
             os.makedirs(PASSPORTS_DIR)
 
     @Cog.listener()
     async def on_member_join(self, member):
-        # Получаем настройки верификации
+        # Обновляем настройки верификации (на случай, если они изменились)
         settings = self.settings_manager.get_all_settings().get("verification", {})
+        self.admin_role_ids = settings.get("admin_role_ids", [])
+        
         welcome_channel_id = settings.get("welcome_channel_id", 0)
         verification_channel_id = settings.get("verification_channel_id", 0)
         
@@ -376,7 +382,14 @@ class MemberJoinEvent(Cog):
         # Отправляем сообщение с кнопками в канал верификации
         verification_channel = self.bot.get_channel(verification_channel_id)
         if verification_channel:
-            await verification_channel.send(embed=embed, view=view)
+            # Формируем пинг админских ролей
+            admin_ping = ""
+            if self.admin_role_ids:
+                admin_ping = " ".join([f"<@&{role_id}>" for role_id in self.admin_role_ids])
+            
+            # Отправляем сообщение с пингом админов
+            message_content = f"{admin_ping}\nПользователь {member.mention} присоединился к серверу." if admin_ping else f"Пользователь {member.mention} присоединился к серверу."
+            await verification_channel.send(message_content, embed=embed, view=view)
 
     async def create_verification_embed(self, member):
         embed = Embed(
