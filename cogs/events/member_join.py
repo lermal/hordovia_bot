@@ -100,6 +100,8 @@ class VerificationView(View):
     @button(label="Принять", style=ButtonStyle.green)
     async def accept(self, button: Button, interaction: Interaction):
         try:
+            logger.info(f"Начинаем принятие пользователя {self.member.id}, passport_message_id: {self.passport_message_id}")
+            
             if self.is_revoke_state:
                 # Отзываем решение
                 await self.revoke_decision(interaction)
@@ -142,9 +144,13 @@ class VerificationView(View):
                 await interaction.response.send_message(f"Участник {self.member.mention} принят!", ephemeral=True)
                 
                 # Обновляем сообщение с паспортом в канале приветствия
-                welcome_channel = self.bot.get_channel(1356017783946874920)
+                settings = self.settings_manager.get_all_settings().get("verification", {})
+                welcome_channel_id = settings.get("welcome_channel_id", 0)
+                welcome_channel = self.bot.get_channel(welcome_channel_id)
+                
                 if welcome_channel and self.passport_message_id:
                     try:
+                        logger.info(f"Обновляем сообщение с паспортом для {self.member.id}, message_id: {self.passport_message_id}")
                         passport_message = await welcome_channel.fetch_message(self.passport_message_id)
                         welcome_embed = Embed(
                             title="Welcome to Hordovia!",
@@ -153,8 +159,12 @@ class VerificationView(View):
                         )
                         welcome_embed.set_image(url="attachment://passport.png")
                         await passport_message.edit(embed=welcome_embed, file=File(passport_path, filename="passport.png"))
+                        logger.info(f"Сообщение с паспортом успешно обновлено для {self.member.id}")
                     except Exception as e:
-                        logger.error(f"Ошибка при обновлении сообщения с паспортом: {e}")
+                        logger.error(f"Ошибка при обновлении сообщения с паспортом для {self.member.id}: {e}")
+                        logger.error(f"Channel ID: {welcome_channel_id}, Message ID: {self.passport_message_id}")
+                else:
+                    logger.warning(f"Не удалось найти канал или ID сообщения для обновления паспорта. Channel: {welcome_channel}, Message ID: {self.passport_message_id}")
         except Exception as e:
             logger.error(f"Ошибка в методе accept: {e}")
             await interaction.response.send_message("Произошла ошибка при выполнении действия. Попробуйте еще раз.", ephemeral=True)
@@ -162,6 +172,8 @@ class VerificationView(View):
     @button(label="Отклонить", style=ButtonStyle.red)
     async def reject(self, button: Button, interaction: Interaction):
         try:
+            logger.info(f"Начинаем отклонение пользователя {self.member.id}, passport_message_id: {self.passport_message_id}")
+            
             if self.is_revoke_state:
                 # Отзываем решение
                 await self.revoke_decision(interaction)
@@ -199,9 +211,13 @@ class VerificationView(View):
             await interaction.response.send_message(f"Участник {self.member.mention} отклонен и кикнут.", ephemeral=True)
             
             # Обновляем сообщение с паспортом в канале приветствия
-            welcome_channel = self.bot.get_channel(1356017783946874920)
+            settings = self.settings_manager.get_all_settings().get("verification", {})
+            welcome_channel_id = settings.get("welcome_channel_id", 0)
+            welcome_channel = self.bot.get_channel(welcome_channel_id)
+            
             if welcome_channel and self.passport_message_id:
                 try:
+                    logger.info(f"Обновляем сообщение с паспортом для {self.member.id}, message_id: {self.passport_message_id}")
                     passport_message = await welcome_channel.fetch_message(self.passport_message_id)
                     welcome_embed = Embed(
                         title="Welcome to Hordovia!",
@@ -210,8 +226,12 @@ class VerificationView(View):
                     )
                     welcome_embed.set_image(url="attachment://passport.png")
                     await passport_message.edit(embed=welcome_embed, file=File(passport_path, filename="passport.png"))
+                    logger.info(f"Сообщение с паспортом успешно обновлено для {self.member.id}")
                 except Exception as e:
-                    logger.error(f"Ошибка при обновлении сообщения с паспортом: {e}")
+                    logger.error(f"Ошибка при обновлении сообщения с паспортом для {self.member.id}: {e}")
+                    logger.error(f"Channel ID: {welcome_channel_id}, Message ID: {self.passport_message_id}")
+            else:
+                logger.warning(f"Не удалось найти канал или ID сообщения для обновления паспорта. Channel: {welcome_channel}, Message ID: {self.passport_message_id}")
             
             # Отправляем сообщение пользователю и кикаем его
             try:
@@ -252,7 +272,10 @@ class VerificationView(View):
             await interaction.response.send_message("Решение успешно отозвано.", ephemeral=True)
             
             # Возвращаем пустой паспорт в канал приветствия
-            welcome_channel = self.bot.get_channel(1356017783946874920)
+            settings = self.settings_manager.get_all_settings().get("verification", {})
+            welcome_channel_id = settings.get("welcome_channel_id", 0)
+            welcome_channel = self.bot.get_channel(welcome_channel_id)
+            
             if welcome_channel and self.passport_message_id:
                 try:
                     # Создаем пустой паспорт
@@ -265,14 +288,20 @@ class VerificationView(View):
                     )
                     welcome_embed.set_image(url="attachment://passport.png")
                     await passport_message.edit(embed=welcome_embed, file=File(passport_path, filename="passport.png"))
+                    logger.info(f"Сообщение с паспортом успешно обновлено для {self.member.id}")
                 except Exception as e:
-                    logger.error(f"Ошибка при обновлении сообщения с паспортом: {e}")
+                    logger.error(f"Ошибка при обновлении сообщения с паспортом для {self.member.id}: {e}")
+                    logger.error(f"Channel ID: {welcome_channel_id}, Message ID: {self.passport_message_id}")
+            else:
+                logger.warning(f"Не удалось найти канал или ID сообщения для обновления паспорта. Channel: {welcome_channel}, Message ID: {self.passport_message_id}")
         except Exception as e:
             logger.error(f"Ошибка в методе revoke_decision: {e}")
             await interaction.response.send_message("Произошла ошибка при отзыве решения. Попробуйте еще раз.", ephemeral=True)
 
     async def create_stamped_passport(self, member, accepted: bool):
         try:
+            logger.info(f"Создаем паспорт с печатью для {member.id}, accepted: {accepted}")
+            
             # Проверяем существование директории для шаблонов
             if not os.path.exists("images/passport_template"):
                 os.makedirs("images/passport_template")
@@ -285,10 +314,14 @@ class VerificationView(View):
             template_path = "images/passport_template/new-passport.png"
             stamp_path = "images/passport_template/press_yes.png" if accepted else "images/passport_template/press_no.png"
             
+            logger.info(f"Проверяем файлы: template={template_path}, stamp={stamp_path}")
+            
             if not os.path.exists(template_path):
                 raise FileNotFoundError(f"Не найден файл шаблона паспорта: {template_path}")
             if not os.path.exists(stamp_path):
                 raise FileNotFoundError(f"Не найден файл печати: {stamp_path}")
+            
+            logger.info("Все файлы найдены, начинаем создание паспорта")
             
             # Создаем базовый паспорт
             img = Image.open(template_path)
@@ -339,6 +372,7 @@ class VerificationView(View):
             suffix = "_accept" if accepted else "_deny"
             passport_path = os.path.join(PASSPORTS_DIR, f"{member.id}{suffix}.png")
             img.save(passport_path)
+            logger.info(f"Паспорт успешно создан и сохранен: {passport_path}")
             return passport_path
         except Exception as e:
             logger.error(f"Ошибка при создании паспорта: {e}")
@@ -388,8 +422,12 @@ class MemberJoinEvent(Cog):
                 welcome_embed.set_image(url="attachment://passport.png")
                 passport_message = await welcome_channel.send(embed=welcome_embed, file=File(passport_path, filename="passport.png"))
                 view.passport_message_id = passport_message.id  # Сохраняем ID сообщения
+                logger.info(f"Создано сообщение с паспортом для {member.id}, message_id: {passport_message.id}")
+            else:
+                logger.warning(f"Не найден канал приветствия с ID: {welcome_channel_id}")
         except Exception as e:
-            logger.error(f"Ошибка при создании пустого паспорта: {e}")
+            logger.error(f"Ошибка при создании пустого паспорта для {member.id}: {e}")
+            view.passport_message_id = None
         
         # Отправляем сообщение с кнопками в канал верификации
         verification_channel = self.bot.get_channel(verification_channel_id)
