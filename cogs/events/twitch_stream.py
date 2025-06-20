@@ -375,11 +375,8 @@ class TwitchStream(Cog):
                         embed.description = f"{description}\n\n**Стрим закончился!**"
                         embed.color = 0x808080  # Серый цвет для завершенного стрима
                         
-                        # Отправляем текст уведомления отдельно, если он есть
-                        if notification_text:
-                            await message.edit(content=notification_text, embed=embed)
-                        else:
-                            await message.edit(embed=embed)
+                        # Убираем текст уведомления при окончании стрима
+                        await message.edit(content=None, embed=embed)
                         # Только запускаем задачу на удаление!
                         delete_task = self.bot.loop.create_task(self.delete_message_after_delay(message, channel))
                         self.pending_deletions[channel] = delete_task
