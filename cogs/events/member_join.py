@@ -457,7 +457,7 @@ class MemberJoinEvent(Cog):
     async def create_verification_embed(self, member):
         embed = Embed(
             title="Новый участник",
-            description=f"Пользователь {member.mention} присоединился к серверу",
+            description=f"Пользователь {member.mention} присоединился к серверу! \nПравила быстрой проверки:\n1) Аккаунт пользователя зарегистрирован не менее месяца назад\n2) Никнейм не должен содержать нецензурную лексику.\n> В противном случаи нужно переименовать по схеме ПКМ - Изменить никнейм - В поле ввода ввести ####",
             color=Color.blue()
         )
         embed.add_field(name="ID", value=member.id)
