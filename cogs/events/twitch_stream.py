@@ -290,6 +290,11 @@ class TwitchStream(Cog):
             # Получаем аватарку стримера
             avatar_url = await self.get_user_avatar(channel)
 
+            # Загружаем данные стримера для получения текста уведомления
+            streamers = self.load_streamers()
+            streamer_data = streamers.get(channel, {})
+            notification_text = streamer_data.get("notification_text", "")
+
             # Проверяем, есть ли уже сообщение о стриме
             message_id = self.stream_messages.get(channel)
             if message_id:
@@ -308,7 +313,12 @@ class TwitchStream(Cog):
                         view = ui.View()
                         button = ui.Button(label="Перейти на канал", url=f"https://twitch.tv/{channel}", style=ButtonStyle.url)
                         view.add_item(button)
-                        await message.edit(embed=embed, view=view)
+                        
+                        # Отправляем текст уведомления отдельно, если он есть
+                        if notification_text:
+                            await message.edit(content=notification_text, embed=embed, view=view)
+                        else:
+                            await message.edit(embed=embed, view=view)
                         logger.info(f"Twitch: Сообщение о стриме {channel} обновлено")
                         return
                 except Exception as e:
@@ -330,7 +340,10 @@ class TwitchStream(Cog):
             view.add_item(button)
             
             # Отправляем уведомление и сохраняем ID сообщения
-            message = await notification_channel.send(embed=embed, view=view)
+            if notification_text:
+                message = await notification_channel.send(content=notification_text, embed=embed, view=view)
+            else:
+                message = await notification_channel.send(embed=embed, view=view)
             self.stream_messages[channel] = message.id
             self.save_state()
         except Exception as e:
@@ -345,6 +358,11 @@ class TwitchStream(Cog):
                 logger.info("Twitch: Канал для уведомлений не найден")
                 return
 
+            # Загружаем данные стримера для получения текста уведомления
+            streamers = self.load_streamers()
+            streamer_data = streamers.get(channel, {})
+            notification_text = streamer_data.get("notification_text", "")
+
             # Получаем ID сообщения о стриме
             message_id = self.stream_messages.get(channel)
             if message_id:
@@ -356,7 +374,12 @@ class TwitchStream(Cog):
                         embed = message.embeds[0]
                         embed.description = f"{description}\n\n**Стрим закончился!**"
                         embed.color = 0x808080  # Серый цвет для завершенного стрима
-                        await message.edit(embed=embed)
+                        
+                        # Отправляем текст уведомления отдельно, если он есть
+                        if notification_text:
+                            await message.edit(content=notification_text, embed=embed)
+                        else:
+                            await message.edit(embed=embed)
                         # Только запускаем задачу на удаление!
                         delete_task = self.bot.loop.create_task(self.delete_message_after_delay(message, channel))
                         self.pending_deletions[channel] = delete_task
@@ -413,6 +436,11 @@ class TwitchStream(Cog):
                 logger.error("Twitch: Канал для уведомлений не найден")
                 return
 
+            # Загружаем данные стримера для получения текста уведомления
+            streamers = self.load_streamers()
+            streamer_data = streamers.get(channel, {})
+            notification_text = streamer_data.get("notification_text", "")
+
             # Получаем ID сообщения о стриме
             message_id = self.stream_messages.get(channel)
             if message_id:
@@ -429,7 +457,12 @@ class TwitchStream(Cog):
                             f"**Категория:** {embed.description.split('**Категория:**')[1].split('**Зрителей:**')[0].strip()}",
                             f"**Категория:** {stream_data['game_name']}"
                         )
-                        await message.edit(embed=embed)
+                        
+                        # Отправляем текст уведомления отдельно, если он есть
+                        if notification_text:
+                            await message.edit(content=notification_text, embed=embed)
+                        else:
+                            await message.edit(embed=embed)
                 except Exception as e:
                     logger.error(f"Twitch: Ошибка при обновлении категории: {e}")
         except Exception as e:
