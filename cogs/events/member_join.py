@@ -10,6 +10,7 @@ import os
 from datetime import datetime
 import random
 from utils.settings_manager import SettingsManager
+import asyncio
 
 from logger import setup_logger
 
@@ -20,27 +21,36 @@ FONT_PATH = "fonts/ttf.ttf"
 FONT_SIZE = 32
 PASSPORTS_DIR = "images/passports"
 
+# Кэш для шрифтов
+_font_cache = {}
+
 def get_font(font_size=FONT_SIZE):
-    try:
-        return ImageFont.truetype(FONT_PATH, font_size)
-    except:
-        logger.error(f"Ошибка загрузки шрифта {FONT_PATH}, использую системный шрифт")
-        return ImageFont.load_default()
+    if font_size not in _font_cache:
+        try:
+            _font_cache[font_size] = ImageFont.truetype(FONT_PATH, font_size)
+        except:
+            logger.error(f"Ошибка загрузки шрифта {FONT_PATH}, использую системный шрифт")
+            _font_cache[font_size] = ImageFont.load_default()
+    return _font_cache[font_size]
 
 async def get_avatar(member):
     # Получаем URL аватарки (используем формат PNG)
     avatar_url = member.display_avatar.with_format("png").url
     
-    # Скачиваем аватарку
-    async with aiohttp.ClientSession() as session:
-        async with session.get(avatar_url) as response:
-            if response.status == 200:
-                avatar_data = await response.read()
-                # Преобразуем байты в изображение PIL
-                avatar = Image.open(BytesIO(avatar_data))
-                # Изменяем размер до 220x220
-                avatar = avatar.resize((220, 220), Image.Resampling.LANCZOS)
-                return avatar
+    # Скачиваем аватарку с таймаутом
+    try:
+        timeout = aiohttp.ClientTimeout(total=5)  # 5 секунд таймаут
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(avatar_url) as response:
+                if response.status == 200:
+                    avatar_data = await response.read()
+                    # Преобразуем байты в изображение PIL
+                    avatar = Image.open(BytesIO(avatar_data))
+                    # Изменяем размер до 220x220
+                    avatar = avatar.resize((220, 220), Image.Resampling.LANCZOS)
+                    return avatar
+    except Exception as e:
+        logger.warning(f"Не удалось загрузить аватарку для {member.id}: {e}")
     return None
 
 class VerificationView(View):
@@ -91,9 +101,9 @@ class VerificationView(View):
             await member.kick(reason="Ранее отклоненная заявка")
             return True
         elif os.path.exists(accept_passport):
-            role = member.guild.get_role(self.member_role_id)
-            if role:
-                await member.add_roles(role)
+            # Не даем роль автоматически, просто возвращаем True чтобы пропустить создание нового паспорта
+            # Роль будет выдана только при повторном принятии через кнопку
+            logger.info(f"Найден существующий принятый паспорт для {member.id}, пропускаем создание нового")
             return True
         return False
 
@@ -141,7 +151,12 @@ class VerificationView(View):
                 embed.add_field(name="Аккаунт создан", value=self.member.created_at.strftime("%d.%m.%Y"))
                 
                 await interaction.message.edit(embed=embed, view=self)
-                await interaction.response.send_message(f"Участник {self.member.mention} принят!", ephemeral=True)
+                
+                # Используем followup вместо response для избежания ошибки истекшего interaction
+                try:
+                    await interaction.response.send_message(f"Участник {self.member.mention} принят!", ephemeral=True)
+                except:
+                    await interaction.followup.send(f"Участник {self.member.mention} принят!", ephemeral=True)
                 
                 # Обновляем сообщение с паспортом в канале приветствия
                 settings = self.settings_manager.get_all_settings().get("verification", {})
@@ -167,7 +182,10 @@ class VerificationView(View):
                     logger.warning(f"Не удалось найти канал или ID сообщения для обновления паспорта. Channel: {welcome_channel}, Message ID: {self.passport_message_id}")
         except Exception as e:
             logger.error(f"Ошибка в методе accept: {e}")
-            await interaction.response.send_message("Произошла ошибка при выполнении действия. Попробуйте еще раз.", ephemeral=True)
+            try:
+                await interaction.response.send_message("Произошла ошибка при выполнении действия. Попробуйте еще раз.", ephemeral=True)
+            except:
+                await interaction.followup.send("Произошла ошибка при выполнении действия. Попробуйте еще раз.", ephemeral=True)
 
     @button(label="Отклонить", style=ButtonStyle.red)
     async def reject(self, button: Button, interaction: Interaction):
@@ -208,7 +226,12 @@ class VerificationView(View):
             embed.add_field(name="Аккаунт создан", value=self.member.created_at.strftime("%d.%m.%Y"))
             
             await interaction.message.edit(embed=embed, view=self)
-            await interaction.response.send_message(f"Участник {self.member.mention} отклонен и кикнут.", ephemeral=True)
+            
+            # Используем followup вместо response для избежания ошибки истекшего interaction
+            try:
+                await interaction.response.send_message(f"Участник {self.member.mention} отклонен и кикнут.", ephemeral=True)
+            except:
+                await interaction.followup.send(f"Участник {self.member.mention} отклонен и кикнут.", ephemeral=True)
             
             # Обновляем сообщение с паспортом в канале приветствия
             settings = self.settings_manager.get_all_settings().get("verification", {})
@@ -241,7 +264,10 @@ class VerificationView(View):
             await self.member.kick(reason="Отклонен администрацией")
         except Exception as e:
             logger.error(f"Ошибка в методе reject: {e}")
-            await interaction.response.send_message("Произошла ошибка при выполнении действия. Попробуйте еще раз.", ephemeral=True)
+            try:
+                await interaction.response.send_message("Произошла ошибка при выполнении действия. Попробуйте еще раз.", ephemeral=True)
+            except:
+                await interaction.followup.send("Произошла ошибка при выполнении действия. Попробуйте еще раз.", ephemeral=True)
 
     async def revoke_decision(self, interaction: Interaction):
         try:
@@ -269,7 +295,12 @@ class VerificationView(View):
             embed.add_field(name="ID", value=self.member.id)
             
             await interaction.message.edit(embed=embed, view=None)
-            await interaction.response.send_message("Решение успешно отозвано.", ephemeral=True)
+            
+            # Используем followup вместо response для избежания ошибки истекшего interaction
+            try:
+                await interaction.response.send_message("Решение успешно отозвано.", ephemeral=True)
+            except:
+                await interaction.followup.send("Решение успешно отозвано.", ephemeral=True)
             
             # Возвращаем пустой паспорт в канал приветствия
             settings = self.settings_manager.get_all_settings().get("verification", {})
@@ -296,7 +327,10 @@ class VerificationView(View):
                 logger.warning(f"Не удалось найти канал или ID сообщения для обновления паспорта. Channel: {welcome_channel}, Message ID: {self.passport_message_id}")
         except Exception as e:
             logger.error(f"Ошибка в методе revoke_decision: {e}")
-            await interaction.response.send_message("Произошла ошибка при отзыве решения. Попробуйте еще раз.", ephemeral=True)
+            try:
+                await interaction.response.send_message("Произошла ошибка при отзыве решения. Попробуйте еще раз.", ephemeral=True)
+            except:
+                await interaction.followup.send("Произошла ошибка при отзыве решения. Попробуйте еще раз.", ephemeral=True)
 
     async def create_stamped_passport(self, member, accepted: bool):
         try:
@@ -327,20 +361,10 @@ class VerificationView(View):
             img = Image.open(template_path)
             draw = ImageDraw.Draw(img)
             
-            # Получаем и добавляем аватарку
-            avatar = await get_avatar(member)
-            if avatar:
-                # Создаем круглую маску для аватарки
-                mask = Image.new('L', (220, 220), 0)
-                mask_draw = ImageDraw.Draw(mask)
-                mask_draw.rectangle((0, 0, 220, 220), fill=255)
-                
-                # Вставляем аватарку в паспорт
-                avatar_x = 40
-                avatar_y = 550
-                img.paste(avatar, (avatar_x, avatar_y))
+            # Загружаем аватарку асинхронно, но не ждем её
+            avatar_task = asyncio.create_task(get_avatar(member))
             
-            # Добавляем информацию на паспорт
+            # Добавляем информацию на паспорт (это быстро)
             draw.text((40, img.height - 390), member.name, font=get_font(64), fill="#584a48")
             draw.text((370, img.height - 338), f"{member.created_at.strftime('%d %B, %Y')}", font=get_font(48), fill="#584a48")
             draw.text((370, img.height - 285), f"{member.joined_at.strftime('%d %B, %Y')}", font=get_font(48), fill="#584a48")
@@ -352,7 +376,7 @@ class VerificationView(View):
             # Добавляем дату на печать
             stamp_draw = ImageDraw.Draw(stamp_img)
             current_date = datetime.now().strftime("%d %B, %Y")
-            stamp_font = ImageFont.truetype(FONT_PATH, 48)
+            stamp_font = get_font(48)
             stamp_draw.text((120, 35), current_date, font=stamp_font, anchor="mm", fill="#047907" if accepted else "#ff9600")
             
             # Рандомный поворот печати
@@ -368,10 +392,23 @@ class VerificationView(View):
             # Накладываем печать
             img.paste(rotated_stamp, stamp_position, rotated_stamp if rotated_stamp.mode == 'RGBA' else None)
             
+            # Теперь ждем аватарку (если она еще загружается)
+            try:
+                avatar = await asyncio.wait_for(avatar_task, timeout=3.0)  # Ждем максимум 3 секунды
+                if avatar:
+                    # Вставляем аватарку в паспорт
+                    avatar_x = 40
+                    avatar_y = 550
+                    img.paste(avatar, (avatar_x, avatar_y))
+            except asyncio.TimeoutError:
+                logger.warning(f"Таймаут загрузки аватарки для {member.id}")
+            except Exception as e:
+                logger.warning(f"Ошибка при добавлении аватарки для {member.id}: {e}")
+            
             # Сохраняем результат
             suffix = "_accept" if accepted else "_deny"
             passport_path = os.path.join(PASSPORTS_DIR, f"{member.id}{suffix}.png")
-            img.save(passport_path)
+            img.save(passport_path, optimize=True)  # Оптимизируем сохранение
             logger.info(f"Паспорт успешно создан и сохранен: {passport_path}")
             return passport_path
         except Exception as e:
@@ -408,28 +445,32 @@ class MemberJoinEvent(Cog):
         # Создаем эмбед
         embed = await self.create_verification_embed(member)
         
-        # Создаем пустой паспорт
-        try:
-            passport_path = await self.create_empty_passport(member)
-            # Отправляем сообщение с паспортом в канал приветствия
-            welcome_channel = self.bot.get_channel(welcome_channel_id)
-            if welcome_channel:
-                welcome_embed = Embed(
-                    title="Welcome to Hordovia!",
-                    description=f"Добро пожаловать на территорию Хордовии, товарищ {member.mention}!\nСлава Хордовии! Спасибо за борщ!",
-                    color=Color.blue()
-                )
-                welcome_embed.set_image(url="attachment://passport.png")
-                passport_message = await welcome_channel.send(embed=welcome_embed, file=File(passport_path, filename="passport.png"))
-                view.passport_message_id = passport_message.id  # Сохраняем ID сообщения
-                logger.info(f"Создано сообщение с паспортом для {member.id}, message_id: {passport_message.id}")
-            else:
-                logger.warning(f"Не найден канал приветствия с ID: {welcome_channel_id}")
-        except Exception as e:
-            logger.error(f"Ошибка при создании пустого паспорта для {member.id}: {e}")
-            view.passport_message_id = None
+        # Создаем пустой паспорт в фоне (не блокируем основной поток)
+        async def create_passport_background():
+            try:
+                passport_path = await self.create_empty_passport(member)
+                # Отправляем сообщение с паспортом в канал приветствия
+                welcome_channel = self.bot.get_channel(welcome_channel_id)
+                if welcome_channel:
+                    welcome_embed = Embed(
+                        title="Welcome to Hordovia!",
+                        description=f"Добро пожаловать на территорию Хордовии, товарищ {member.mention}!\nСлава Хордовии! Спасибо за борщ!",
+                        color=Color.blue()
+                    )
+                    welcome_embed.set_image(url="attachment://passport.png")
+                    passport_message = await welcome_channel.send(embed=welcome_embed, file=File(passport_path, filename="passport.png"))
+                    view.passport_message_id = passport_message.id  # Сохраняем ID сообщения
+                    logger.info(f"Создано сообщение с паспортом для {member.id}, message_id: {passport_message.id}")
+                else:
+                    logger.warning(f"Не найден канал приветствия с ID: {welcome_channel_id}")
+            except Exception as e:
+                logger.error(f"Ошибка при создании пустого паспорта для {member.id}: {e}")
+                view.passport_message_id = None
         
-        # Отправляем сообщение с кнопками в канал верификации
+        # Запускаем создание паспорта в фоне
+        asyncio.create_task(create_passport_background())
+        
+        # Отправляем сообщение с кнопками в канал верификации (это происходит сразу)
         verification_channel = self.bot.get_channel(verification_channel_id)
         if verification_channel:
             # Формируем пинг админских ролей
@@ -480,28 +521,31 @@ class MemberJoinEvent(Cog):
             img = Image.open(template_path)
             draw = ImageDraw.Draw(img)
             
-            # Получаем и добавляем аватарку
-            avatar = await get_avatar(member)
-            if avatar:
-                # Создаем круглую маску для аватарки
-                mask = Image.new('L', (220, 220), 0)
-                mask_draw = ImageDraw.Draw(mask)
-                mask_draw.rectangle((0, 0, 220, 220), fill=255)
-                
-                # Вставляем аватарку в паспорт
-                avatar_x = 40
-                avatar_y = 550
-                img.paste(avatar, (avatar_x, avatar_y))
+            # Загружаем аватарку асинхронно, но не ждем её
+            avatar_task = asyncio.create_task(get_avatar(member))
             
-            # Добавляем информацию на паспорт
+            # Добавляем информацию на паспорт (это быстро)
             draw.text((40, img.height - 390), member.name, font=get_font(64), fill="#584a48")
             draw.text((370, img.height - 338), f"{member.created_at.strftime('%d %B, %Y')}", font=get_font(48), fill="#584a48")
             draw.text((370, img.height - 285), f"{member.joined_at.strftime('%d %B, %Y')}", font=get_font(48), fill="#584a48")
             draw.text((40, img.height - 83), f"{member.id}", font=get_font(60), fill="#584a48")
             
+            # Теперь ждем аватарку (если она еще загружается)
+            try:
+                avatar = await asyncio.wait_for(avatar_task, timeout=3.0)  # Ждем максимум 3 секунды
+                if avatar:
+                    # Вставляем аватарку в паспорт
+                    avatar_x = 40
+                    avatar_y = 550
+                    img.paste(avatar, (avatar_x, avatar_y))
+            except asyncio.TimeoutError:
+                logger.warning(f"Таймаут загрузки аватарки для {member.id}")
+            except Exception as e:
+                logger.warning(f"Ошибка при добавлении аватарки для {member.id}: {e}")
+            
             # Сохраняем результат
             passport_path = os.path.join(PASSPORTS_DIR, f"{member.id}_empty.png")
-            img.save(passport_path)
+            img.save(passport_path, optimize=True)  # Оптимизируем сохранение
             return passport_path
         except Exception as e:
             logger.error(f"Ошибка при создании пустого паспорта: {e}")
