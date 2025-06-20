@@ -14,18 +14,18 @@ class AddStreamerModal(ui.Modal):
         super().__init__(title="Добавить стримера")
         self.callback_func = callback
         self.login = ui.TextInput(label="Логин стримера", required=True, max_length=50)
-        self.description = ui.TextInput(
-            label="Описание", 
-            required=False, 
-            max_length=200,
-            style=TextInputStyle.paragraph
-        )
         self.notification_text = ui.TextInput(
             label="Текст уведомления (упоминания, пинги)",
             required=False,
             max_length=500,
             style=TextInputStyle.paragraph,
             placeholder="Например: <@&123456789> Стрим начался!"
+        )
+        self.description = ui.TextInput(
+            label="Описание", 
+            required=False, 
+            max_length=200,
+            style=TextInputStyle.paragraph
         )
         self.add_item(self.login)
         self.add_item(self.description)
@@ -41,13 +41,6 @@ class EditStreamerModal(ui.Modal):
         super().__init__(title=f"Редактировать настройки: {streamer}")
         self.streamer = streamer
         self.callback_func = callback
-        self.description = ui.TextInput(
-            label="Описание",
-            style=TextInputStyle.paragraph,
-            default_value=current_description,
-            required=False,
-            max_length=200
-        )
         self.notification_text = ui.TextInput(
             label="Текст уведомления (упоминания, пинги)",
             style=TextInputStyle.paragraph,
@@ -55,6 +48,13 @@ class EditStreamerModal(ui.Modal):
             required=False,
             max_length=500,
             placeholder="Например: <@&123456789> Стрим начался!"
+        )
+        self.description = ui.TextInput(
+            label="Описание",
+            style=TextInputStyle.paragraph,
+            default_value=current_description,
+            required=False,
+            max_length=200
         )
         self.add_item(self.description)
         self.add_item(self.notification_text)
