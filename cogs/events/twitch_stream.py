@@ -23,7 +23,6 @@ class TwitchStream(Cog):
         self.state_file = "data/twitch_state.json"  # Файл для сохранения состояния
         self.stream_messages = {}  # Словарь для хранения ID сообщений о стримах
         self.stream_categories = {}  # Словарь для хранения текущих категорий стримов
-        self.pending_deletions = {}  # Словарь для хранения задач на удаление сообщений
         self.avatar_cache = {}
         
         # Загружаем сохраненное состояние
@@ -301,9 +300,6 @@ class TwitchStream(Cog):
                 try:
                     message = await notification_channel.fetch_message(message_id)
                     if message:
-                        if channel in self.pending_deletions:
-                            self.pending_deletions[channel].cancel()
-                            del self.pending_deletions[channel]
                         # Формируем embed с описанием и категорией
                         embed = message.embeds[0]
                         embed.description = f"{description}\n\n**Категория:** {stream_data['game_name']}"
@@ -377,9 +373,6 @@ class TwitchStream(Cog):
                         
                         # Убираем текст уведомления при окончании стрима
                         await message.edit(content=None, embed=embed)
-                        # Только запускаем задачу на удаление!
-                        delete_task = self.bot.loop.create_task(self.delete_message_after_delay(message, channel))
-                        self.pending_deletions[channel] = delete_task
                 except Exception as e:
                     logger.error(f"Twitch: Ошибка при редактировании сообщения: {e}")
                     # Если не удалось редактировать сообщение, удаляем его из словаря
@@ -387,26 +380,6 @@ class TwitchStream(Cog):
                     self.save_state()
         except Exception as e:
             logger.error(f"Twitch: Ошибка при обработке окончания стрима: {e}")
-
-    async def delete_message_after_delay(self, message, channel):
-        """Удаление сообщения через 5 минут"""
-        await asyncio.sleep(300)
-        if channel in self.streaming and self.streaming[channel]:
-            logger.info(f"Twitch: Стрим {channel} возобновился, сообщение не будет удалено")
-            return
-        try:
-            await message.delete()
-            logger.info(f"Twitch: Сообщение о стриме {channel} удалено")
-        except Exception as e:
-            logger.error(f"Twitch: Ошибка при удалении сообщения: {e}")
-        # Только теперь удаляем из словарей и сохраняем состояние!
-        if channel in self.stream_messages:
-            del self.stream_messages[channel]
-        if channel in self.stream_categories:
-            del self.stream_categories[channel]
-        self.save_state()
-        if channel in self.pending_deletions:
-            del self.pending_deletions[channel]
 
     async def twitch_check_loop(self):
         """Цикл проверки статуса стрима"""
@@ -469,9 +442,6 @@ class TwitchStream(Cog):
         """Остановка задачи при выгрузке кога"""
         if self.task:
             self.task.cancel()
-        # Отменяем все задачи на удаление
-        for task in self.pending_deletions.values():
-            task.cancel()
         # Сохраняем состояние перед выгрузкой
         self.save_state()
 
