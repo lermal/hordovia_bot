@@ -23,6 +23,7 @@ class TwitchStream(Cog):
         self.state_file = "data/twitch_state.json"  # Файл для сохранения состояния
         self.stream_messages = {}  # Словарь для хранения ID сообщений о стримах
         self.stream_categories = {}  # Словарь для хранения текущих категорий стримов
+        self.stream_end_times = {}  # Словарь для хранения времени окончания стримов
         self.avatar_cache = {}
         
         # Загружаем сохраненное состояние
@@ -49,6 +50,15 @@ class TwitchStream(Cog):
                 self.stream_messages = data.get("stream_messages", {})
                 self.stream_categories = data.get("stream_categories", {})
                 self.streaming = data.get("streaming", {})
+                # Загружаем времена окончания стримов, конвертируя строки обратно в datetime
+                stream_end_times_data = data.get("stream_end_times", {})
+                self.stream_end_times = {}
+                for channel, end_time_str in stream_end_times_data.items():
+                    try:
+                        self.stream_end_times[channel] = datetime.fromisoformat(end_time_str)
+                    except ValueError:
+                        # Если формат неверный, игнорируем эту запись
+                        pass
                 logger.info("Twitch: Состояние загружено")
         except Exception as e:
             logger.error(f"Twitch: Ошибка при загрузке состояния: {e}")
@@ -56,10 +66,16 @@ class TwitchStream(Cog):
     def save_state(self):
         """Сохранение текущего состояния"""
         try:
+            # Конвертируем datetime в строки для сериализации
+            stream_end_times_data = {}
+            for channel, end_time in self.stream_end_times.items():
+                stream_end_times_data[channel] = end_time.isoformat()
+                
             data = {
                 "stream_messages": self.stream_messages,
                 "stream_categories": self.stream_categories,
-                "streaming": self.streaming
+                "streaming": self.streaming,
+                "stream_end_times": stream_end_times_data
             }
             with open(self.state_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=4)
@@ -294,9 +310,30 @@ class TwitchStream(Cog):
             streamer_data = streamers.get(channel, {})
             notification_text = streamer_data.get("notification_text", "")
 
-            # Проверяем, есть ли уже сообщение о стриме
+            # Проверяем, должны ли мы создать новое сообщение
+            should_create_new_message = True
             message_id = self.stream_messages.get(channel)
+            
             if message_id:
+                # Проверяем, прошло ли больше 15 минут с момента окончания последнего стрима
+                last_end_time = self.stream_end_times.get(channel)
+                if last_end_time:
+                    time_since_end = datetime.now() - last_end_time
+                    if time_since_end.total_seconds() < 900:  # 15 минут = 900 секунд
+                        should_create_new_message = False
+                        logger.info(f"Twitch: Стример {channel} возобновил стрим в течение 15 минут, обновляем существующее сообщение")
+                    else:
+                        logger.info(f"Twitch: Прошло {time_since_end.total_seconds()//60:.0f} минут с окончания стрима {channel}, создаем новое сообщение")
+                        # Удаляем старое сообщение из отслеживания
+                        del self.stream_messages[channel]
+                        if channel in self.stream_end_times:
+                            del self.stream_end_times[channel]
+                        should_create_new_message = True
+                else:
+                    should_create_new_message = False
+
+            # Если не нужно создавать новое сообщение, пытаемся обновить существующее
+            if not should_create_new_message and message_id:
                 try:
                     message = await notification_channel.fetch_message(message_id)
                     if message:
@@ -316,10 +353,17 @@ class TwitchStream(Cog):
                         else:
                             await message.edit(embed=embed, view=view)
                         logger.info(f"Twitch: Сообщение о стриме {channel} обновлено")
+                        
+                        # Очищаем время окончания, так как стрим возобновился
+                        if channel in self.stream_end_times:
+                            del self.stream_end_times[channel]
+                            self.save_state()
                         return
                 except Exception as e:
                     logger.error(f"Twitch: Ошибка при обновлении сообщения: {e}")
                     del self.stream_messages[channel]
+                    if channel in self.stream_end_times:
+                        del self.stream_end_times[channel]
                     self.save_state()
 
             # Если сообщения нет или не удалось его обновить, создаем новое
@@ -341,13 +385,22 @@ class TwitchStream(Cog):
             else:
                 message = await notification_channel.send(embed=embed, view=view)
             self.stream_messages[channel] = message.id
+            
+            # Очищаем время окончания, так как это новое сообщение
+            if channel in self.stream_end_times:
+                del self.stream_end_times[channel]
+            
             self.save_state()
+            logger.info(f"Twitch: Создано новое сообщение о стриме {channel}")
         except Exception as e:
             logger.error(f"Twitch: Ошибка при обработке начала стрима: {e}")
 
     async def on_stream_end(self, channel, description):
         """Действия при окончании стрима"""
         try:
+            # Сохраняем время окончания стрима
+            self.stream_end_times[channel] = datetime.now()
+            
             # Получаем канал для уведомлений
             notification_channel = self.bot.get_channel(TWITCH_NOTIFICATION_CHANNEL_ID)
             if not notification_channel:
@@ -373,11 +426,14 @@ class TwitchStream(Cog):
                         
                         # Убираем текст уведомления при окончании стрима
                         await message.edit(content=None, embed=embed)
+                        logger.info(f"Twitch: Сообщение о завершении стрима {channel} обновлено")
                 except Exception as e:
                     logger.error(f"Twitch: Ошибка при редактировании сообщения: {e}")
                     # Если не удалось редактировать сообщение, удаляем его из словаря
                     del self.stream_messages[channel]
-                    self.save_state()
+            
+            # Сохраняем состояние с временем окончания
+            self.save_state()
         except Exception as e:
             logger.error(f"Twitch: Ошибка при обработке окончания стрима: {e}")
 
@@ -389,6 +445,10 @@ class TwitchStream(Cog):
             try:
                 logger.debug(f"Twitch: Начинаем проверку стримов, интервал: {TWITCH_CHECK_INTERVAL}")
                 await self.check_stream_status()
+                
+                # Очищаем старые записи о времени окончания стримов (старше 24 часов)
+                await self.cleanup_old_stream_end_times()
+                
                 logger.debug(f"Twitch: Проверка завершена, ожидаем {TWITCH_CHECK_INTERVAL} секунд")
                 await asyncio.sleep(TWITCH_CHECK_INTERVAL)  # Интервал проверки в секундах
             except Exception as e:
@@ -396,6 +456,27 @@ class TwitchStream(Cog):
                 import traceback
                 logger.error(f"Twitch: Полный стек ошибки в цикле: {traceback.format_exc()}")
                 await asyncio.sleep(60)  # При ошибке ждем минуту перед следующей попыткой
+
+    async def cleanup_old_stream_end_times(self):
+        """Очистка старых записей о времени окончания стримов (старше 24 часов)"""
+        try:
+            current_time = datetime.now()
+            channels_to_remove = []
+            
+            for channel, end_time in self.stream_end_times.items():
+                time_since_end = current_time - end_time
+                if time_since_end.total_seconds() > 86400:  # 24 часа = 86400 секунд
+                    channels_to_remove.append(channel)
+            
+            if channels_to_remove:
+                for channel in channels_to_remove:
+                    del self.stream_end_times[channel]
+                    logger.debug(f"Twitch: Удалена старая запись о времени окончания стрима для {channel}")
+                
+                self.save_state()
+                logger.info(f"Twitch: Очищено {len(channels_to_remove)} старых записей о времени окончания стримов")
+        except Exception as e:
+            logger.error(f"Twitch: Ошибка при очистке старых записей: {e}")
 
     async def update_stream_category(self, channel, stream_data):
         """Обновление категории в сообщении о стриме"""
