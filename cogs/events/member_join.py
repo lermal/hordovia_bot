@@ -85,12 +85,12 @@ class VerificationView(View):
         self.clear_items()
         
         # Кнопка "Принять"
-        accept_btn = Button(label="Принять", style=ButtonStyle.green)
+        accept_btn = Button(label="Принять", style=ButtonStyle.green, disabled=False)
         accept_btn.callback = self.handle_accept
         self.add_item(accept_btn)
         
         # Кнопка "Отклонить"
-        reject_btn = Button(label="Отклонить", style=ButtonStyle.red)
+        reject_btn = Button(label="Отклонить", style=ButtonStyle.red, disabled=False)
         reject_btn.callback = self.handle_reject
         self.add_item(reject_btn)
 
@@ -98,7 +98,7 @@ class VerificationView(View):
         """Создает кнопку Отозвать решение"""
         self.clear_items()
         
-        revoke_btn = Button(label="Отозвать решение", style=ButtonStyle.gray)
+        revoke_btn = Button(label="Отозвать решение", style=ButtonStyle.gray, disabled=False)
         revoke_btn.callback = self.handle_revoke
         self.add_item(revoke_btn)
         self.is_revoke_state = True
@@ -107,7 +107,7 @@ class VerificationView(View):
         """Создает кнопку Отменить отзыв (только для отклоненных)"""
         self.clear_items()
         
-        cancel_btn = Button(label="Отменить отзыв", style=ButtonStyle.secondary)
+        cancel_btn = Button(label="Отменить отзыв", style=ButtonStyle.secondary, disabled=False)
         cancel_btn.callback = self.handle_cancel_revoke
         self.add_item(cancel_btn)
 
@@ -177,6 +177,14 @@ class VerificationView(View):
     async def accept(self, interaction: Interaction):
         try:
             logger.info(f"Начинаем принятие пользователя {self.member.id}, passport_message_id: {self.passport_message_id}")
+            
+            # Отключаем кнопки во время обработки
+            for item in self.children:
+                if hasattr(item, 'disabled'):
+                    item.disabled = True
+            
+            # Обновляем сообщение с отключенными кнопками
+            await interaction.message.edit(view=self)
             
             # Сразу отправляем ответ, чтобы не было таймаута
             try:
@@ -261,6 +269,14 @@ class VerificationView(View):
     async def reject(self, interaction: Interaction):
         try:
             logger.info(f"Начинаем отклонение пользователя {self.member.id}, passport_message_id: {self.passport_message_id}")
+            
+            # Отключаем кнопки во время обработки
+            for item in self.children:
+                if hasattr(item, 'disabled'):
+                    item.disabled = True
+            
+            # Обновляем сообщение с отключенными кнопками
+            await interaction.message.edit(view=self)
             
             # Сразу отправляем ответ, чтобы не было таймаута
             try:
@@ -348,6 +364,15 @@ class VerificationView(View):
         try:
             # Проверяем, нужно ли отправлять первичный ответ
             should_send_response = not interaction.response.is_done()
+            
+            # Отключаем кнопку во время обработки
+            for item in self.children:
+                if hasattr(item, 'disabled'):
+                    item.disabled = True
+            
+            # Обновляем сообщение с отключенной кнопкой
+            await interaction.message.edit(view=self)
+            
             if should_send_response:
                 try:
                     await interaction.response.send_message("Обрабатываем отзыв решения...", ephemeral=True)
@@ -489,22 +514,30 @@ class VerificationView(View):
     async def cancel_revoke_decision(self, interaction: Interaction):
         """Отменяет отзыв (удаляет сообщение) - только для отклоненных пользователей"""
         try:
+            # Отключаем кнопку во время обработки
+            for item in self.children:
+                if hasattr(item, 'disabled'):
+                    item.disabled = True
+            
+            # Обновляем сообщение с отключенной кнопкой
+            await interaction.message.edit(view=self)
+            
+            # Отправляем ответ
+            try:
+                await interaction.response.send_message("Удаляем сообщение верификации...", ephemeral=True)
+            except Exception as e:
+                logger.warning(f"Не удалось отправить ответ: {e}")
+            
             # Удаляем сообщение верификации
             await interaction.message.delete()
             logger.info(f"Удалено сообщение верификации для пользователя {self.member.id} по запросу отмены отзыва")
-            
-            try:
-                await interaction.response.send_message("Сообщение верификации удалено.", ephemeral=True)
-            except:
-                # Если сообщение уже удалено, interaction может не сработать
-                pass
                 
         except Exception as e:
             logger.error(f"Ошибка в методе cancel_revoke_decision: {e}")
             try:
-                await interaction.response.send_message("Произошла ошибка при удалении сообщения.", ephemeral=True)
-            except:
                 await interaction.followup.send("Произошла ошибка при удалении сообщения.", ephemeral=True)
+            except:
+                pass
 
     async def create_empty_passport(self, member):
         """Создает пустой паспорт для пользователя"""
