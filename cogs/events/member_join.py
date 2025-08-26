@@ -24,6 +24,15 @@ PASSPORTS_DIR = "images/passports"
 # Кэш для шрифтов
 _font_cache = {}
 
+def normalize_admin_role_ids(admin_role_ids):
+    """Нормализует admin_role_ids в список, независимо от входного типа"""
+    if isinstance(admin_role_ids, int):
+        return [admin_role_ids]
+    elif isinstance(admin_role_ids, list):
+        return admin_role_ids
+    else:
+        return []
+
 def get_font(font_size=FONT_SIZE):
     if font_size not in _font_cache:
         try:
@@ -425,7 +434,7 @@ class MemberJoinEvent(Cog):
         
         # Получаем настройки верификации
         settings = self.settings_manager.get_all_settings().get("verification", {})
-        self.admin_role_ids = settings.get("admin_role_ids", [])
+        self.admin_role_ids = normalize_admin_role_ids(settings.get("admin_role_ids", []))
         
         # Создаем директорию для паспортов, если её нет
         if not os.path.exists(PASSPORTS_DIR):
@@ -447,7 +456,7 @@ class MemberJoinEvent(Cog):
             
             # Обновляем настройки верификации (на случай, если они изменились)
             settings = self.settings_manager.get_all_settings().get("verification", {})
-            self.admin_role_ids = settings.get("admin_role_ids", [])
+            self.admin_role_ids = normalize_admin_role_ids(settings.get("admin_role_ids", []))
             
             welcome_channel_id = settings.get("welcome_channel_id", 0)
             verification_channel_id = settings.get("verification_channel_id", 0)
@@ -472,7 +481,7 @@ class MemberJoinEvent(Cog):
                 welcome_channel = self.bot.get_channel(welcome_channel_id)
                 if welcome_channel:
                     embed = Embed(
-                        title="🛂 Хордовец вернулся!",
+                        title="Хордовец вернулся!",
                         description=f"Хордовец {member.mention} вернулся на сервер!\nДобро пожаловать домой, товарищ!",
                         color=Color.green()
                     )
