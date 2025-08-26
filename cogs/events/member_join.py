@@ -76,34 +76,45 @@ class VerificationView(View):
         
         self.passport_message_id = None  # ID сообщения с паспортом в канале "Добро пожаловать"
         self.is_revoke_state = False
+        
+        # Создаем начальные кнопки
+        self.setup_initial_buttons()
+
+    def setup_initial_buttons(self):
+        """Создает начальные кнопки Принять/Отклонить"""
+        self.clear_items()
+        
+        # Кнопка "Принять"
+        accept_btn = Button(label="Принять", style=ButtonStyle.green)
+        accept_btn.callback = self.handle_accept
+        self.add_item(accept_btn)
+        
+        # Кнопка "Отклонить"
+        reject_btn = Button(label="Отклонить", style=ButtonStyle.red)
+        reject_btn.callback = self.handle_reject
+        self.add_item(reject_btn)
+
+    def setup_revoke_button(self):
+        """Создает кнопку Отозвать решение"""
+        self.clear_items()
+        
+        revoke_btn = Button(label="Отозвать решение", style=ButtonStyle.gray)
+        revoke_btn.callback = self.handle_revoke
+        self.add_item(revoke_btn)
+        self.is_revoke_state = True
+
+    def setup_cancel_revoke_button(self):
+        """Создает кнопку Отменить отзыв (только для отклоненных)"""
+        self.clear_items()
+        
+        cancel_btn = Button(label="Отменить отзыв", style=ButtonStyle.secondary)
+        cancel_btn.callback = self.handle_cancel_revoke
+        self.add_item(cancel_btn)
 
     def reset_to_initial_state(self):
         """Сбрасывает View к исходному состоянию с кнопками Принять/Отклонить"""
-        self.clear_items()
         self.is_revoke_state = False
-        
-        # Воссоздаем кнопки программно, но правильно
-        from nextcord.ui import Button
-        
-        # Создаем кнопку "Принять"
-        accept_btn = Button(label="Принять", style=ButtonStyle.green)
-        
-        # Создаем обертку для метода accept
-        async def accept_callback(interaction):
-            await self.accept(accept_btn, interaction)
-        accept_btn.callback = accept_callback
-        
-        # Создаем кнопку "Отклонить"  
-        reject_btn = Button(label="Отклонить", style=ButtonStyle.red)
-        
-        # Создаем обертку для метода reject
-        async def reject_callback(interaction):
-            await self.reject(reject_btn, interaction)
-        reject_btn.callback = reject_callback
-        
-        # Добавляем кнопки к View
-        self.add_item(accept_btn)
-        self.add_item(reject_btn)
+        self.setup_initial_buttons()
 
     async def interaction_check(self, interaction: Interaction) -> bool:
         # Обновляем настройки перед проверкой (на случай, если они изменились)
@@ -147,8 +158,23 @@ class VerificationView(View):
             return False
         return False
 
-    @button(label="Принять", style=ButtonStyle.green)
-    async def accept(self, button: Button, interaction: Interaction):
+    async def handle_accept(self, interaction: Interaction):
+        """Обработчик кнопки Принять"""
+        await self.accept(interaction)
+
+    async def handle_reject(self, interaction: Interaction):
+        """Обработчик кнопки Отклонить"""
+        await self.reject(interaction)
+
+    async def handle_revoke(self, interaction: Interaction):
+        """Обработчик кнопки Отозвать решение"""
+        await self.revoke_decision(interaction)
+
+    async def handle_cancel_revoke(self, interaction: Interaction):
+        """Обработчик кнопки Отменить отзыв"""
+        await self.cancel_revoke_decision(interaction)
+
+    async def accept(self, interaction: Interaction):
         try:
             logger.info(f"Начинаем принятие пользователя {self.member.id}, passport_message_id: {self.passport_message_id}")
             
@@ -175,11 +201,7 @@ class VerificationView(View):
                     return
                 
                 # Меняем кнопки на "Отозвать решение"
-                self.clear_items()
-                revoke_button = Button(label="Отозвать решение", style=ButtonStyle.gray, custom_id="revoke_accept")
-                revoke_button.callback = self.revoke_decision
-                self.add_item(revoke_button)
-                self.is_revoke_state = True
+                self.setup_revoke_button()
                 
                 # Обновляем сообщение
                 embed = Embed(
@@ -227,8 +249,7 @@ class VerificationView(View):
             except:
                 await interaction.followup.send("Произошла ошибка при выполнении действия. Попробуйте еще раз.", ephemeral=True)
 
-    @button(label="Отклонить", style=ButtonStyle.red)
-    async def reject(self, button: Button, interaction: Interaction):
+    async def reject(self, interaction: Interaction):
         try:
             logger.info(f"Начинаем отклонение пользователя {self.member.id}, passport_message_id: {self.passport_message_id}")
             
@@ -250,11 +271,7 @@ class VerificationView(View):
                 return
             
             # Меняем кнопки на "Отозвать решение"
-            self.clear_items()
-            revoke_button = Button(label="Отозвать решение", style=ButtonStyle.gray, custom_id="revoke_reject")
-            revoke_button.callback = self.revoke_decision
-            self.add_item(revoke_button)
-            self.is_revoke_state = True
+            self.setup_revoke_button()
             
             # Обновляем сообщение
             embed = Embed(
@@ -404,10 +421,7 @@ class VerificationView(View):
                     logger.warning(f"Не удалось отправить ЛС пользователю {self.member.id}: {e}")
                 
                 # Создаем кнопку "Отменить отзыв"
-                self.clear_items()
-                cancel_revoke_button = Button(label="Отменить отзыв", style=ButtonStyle.secondary, custom_id="cancel_revoke")
-                cancel_revoke_button.callback = self.cancel_revoke_decision
-                self.add_item(cancel_revoke_button)
+                self.setup_cancel_revoke_button()
                 
                 self.is_revoke_state = True
                 
