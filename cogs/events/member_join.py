@@ -178,6 +178,12 @@ class VerificationView(View):
         try:
             logger.info(f"Начинаем принятие пользователя {self.member.id}, passport_message_id: {self.passport_message_id}")
             
+            # Сразу отправляем ответ, чтобы не было таймаута
+            try:
+                await interaction.response.send_message(f"Обрабатываем принятие участника {self.member.mention}...", ephemeral=True)
+            except Exception as e:
+                logger.warning(f"Не удалось отправить первичный ответ: {e}")
+            
             if self.is_revoke_state:
                 # Отзываем решение
                 await self.revoke_decision(interaction)
@@ -197,7 +203,10 @@ class VerificationView(View):
                         os.remove(empty_passport)
                 except Exception as e:
                     logger.error(f"Ошибка при создании паспорта: {e}")
-                    await interaction.response.send_message("Произошла ошибка при создании паспорта. Попробуйте еще раз.", ephemeral=True)
+                    try:
+                        await interaction.followup.send("Произошла ошибка при создании паспорта. Попробуйте еще раз.", ephemeral=True)
+                    except:
+                        pass
                     return
                 
                 # Меняем кнопки на "Отозвать решение"
@@ -214,11 +223,11 @@ class VerificationView(View):
                 
                 await interaction.message.edit(embed=embed, view=self)
                 
-                # Используем followup вместо response для избежания ошибки истекшего interaction
+                # Отправляем финальное уведомление
                 try:
-                    await interaction.response.send_message(f"Участник {self.member.mention} принят!", ephemeral=True)
-                except:
-                    await interaction.followup.send(f"Участник {self.member.mention} принят!", ephemeral=True)
+                    await interaction.followup.send(f"Участник {self.member.mention} успешно принят!", ephemeral=True)
+                except Exception as e:
+                    logger.warning(f"Не удалось отправить финальное уведомление: {e}")
                 
                 # Обновляем сообщение с паспортом в канале приветствия
                 settings = self.settings_manager.get_all_settings().get("verification", {})
@@ -245,13 +254,19 @@ class VerificationView(View):
         except Exception as e:
             logger.error(f"Ошибка в методе accept: {e}")
             try:
-                await interaction.response.send_message("Произошла ошибка при выполнении действия. Попробуйте еще раз.", ephemeral=True)
-            except:
                 await interaction.followup.send("Произошла ошибка при выполнении действия. Попробуйте еще раз.", ephemeral=True)
+            except Exception as ex:
+                logger.warning(f"Не удалось отправить сообщение об ошибке: {ex}")
 
     async def reject(self, interaction: Interaction):
         try:
             logger.info(f"Начинаем отклонение пользователя {self.member.id}, passport_message_id: {self.passport_message_id}")
+            
+            # Сразу отправляем ответ, чтобы не было таймаута
+            try:
+                await interaction.response.send_message(f"Обрабатываем отклонение участника {self.member.mention}...", ephemeral=True)
+            except Exception as e:
+                logger.warning(f"Не удалось отправить первичный ответ: {e}")
             
             if self.is_revoke_state:
                 # Отзываем решение
@@ -267,7 +282,10 @@ class VerificationView(View):
                     os.remove(empty_passport)
             except Exception as e:
                 logger.error(f"Ошибка при создании паспорта: {e}")
-                await interaction.response.send_message("Произошла ошибка при создании паспорта. Попробуйте еще раз.", ephemeral=True)
+                try:
+                    await interaction.followup.send("Произошла ошибка при создании паспорта. Попробуйте еще раз.", ephemeral=True)
+                except:
+                    pass
                 return
             
             # Меняем кнопки на "Отозвать решение"
@@ -284,11 +302,11 @@ class VerificationView(View):
             
             await interaction.message.edit(embed=embed, view=self)
             
-            # Используем followup вместо response для избежания ошибки истекшего interaction
+            # Отправляем финальное уведомление
             try:
-                await interaction.response.send_message(f"Участник {self.member.mention} отклонен и кикнут.", ephemeral=True)
-            except:
                 await interaction.followup.send(f"Участник {self.member.mention} отклонен и кикнут.", ephemeral=True)
+            except Exception as e:
+                logger.warning(f"Не удалось отправить финальное уведомление: {e}")
             
             # Обновляем сообщение с паспортом в канале приветствия
             settings = self.settings_manager.get_all_settings().get("verification", {})
@@ -322,12 +340,21 @@ class VerificationView(View):
         except Exception as e:
             logger.error(f"Ошибка в методе reject: {e}")
             try:
-                await interaction.response.send_message("Произошла ошибка при выполнении действия. Попробуйте еще раз.", ephemeral=True)
-            except:
                 await interaction.followup.send("Произошла ошибка при выполнении действия. Попробуйте еще раз.", ephemeral=True)
+            except Exception as ex:
+                logger.warning(f"Не удалось отправить сообщение об ошибке: {ex}")
 
     async def revoke_decision(self, interaction: Interaction):
         try:
+            # Проверяем, нужно ли отправлять первичный ответ
+            should_send_response = not interaction.response.is_done()
+            if should_send_response:
+                try:
+                    await interaction.response.send_message("Обрабатываем отзыв решения...", ephemeral=True)
+                except Exception as e:
+                    logger.warning(f"Не удалось отправить первичный ответ в revoke_decision: {e}")
+                    should_send_response = False
+            
             # Проверяем, какое решение было принято
             accept_passport = os.path.join(PASSPORTS_DIR, f"{self.member.id}_accept.png")
             deny_passport = os.path.join(PASSPORTS_DIR, f"{self.member.id}_deny.png")
@@ -395,10 +422,12 @@ class VerificationView(View):
                 
                 await interaction.message.edit(embed=embed, view=self)
                 
+                # Отправляем ответ через followup
                 try:
-                    await interaction.response.send_message("Принятие пользователя отозвано. Пользователь возвращен к ожиданию верификации.", ephemeral=True)
-                except:
                     await interaction.followup.send("Принятие пользователя отозвано. Пользователь возвращен к ожиданию верификации.", ephemeral=True)
+                except Exception as e:
+                    logger.warning(f"Не удалось отправить ответ на interaction: {e}")
+                    # Игнорируем ошибки отправки ответа, главное что действие выполнено
             
             elif was_denied:
                 # Пользователь был отклонен - отзываем отклонение
@@ -437,24 +466,25 @@ class VerificationView(View):
                 await interaction.message.edit(embed=embed, view=self)
                 
                 try:
-                    await interaction.response.send_message("Отклонение пользователя отозвано. Пользователь уведомлен в ЛС.", ephemeral=True)
-                except:
                     await interaction.followup.send("Отклонение пользователя отозвано. Пользователь уведомлен в ЛС.", ephemeral=True)
+                except Exception as e:
+                    logger.warning(f"Не удалось отправить ответ на interaction: {e}")
+                    # Игнорируем ошибки отправки ответа, главное что действие выполнено
             
             else:
                 # Неизвестное состояние
                 logger.warning(f"Попытка отозвать решение для пользователя {self.member.id}, но паспорт не найден")
                 try:
-                    await interaction.response.send_message("Не найден паспорт для отзыва решения.", ephemeral=True)
-                except:
                     await interaction.followup.send("Не найден паспорт для отзыва решения.", ephemeral=True)
+                except Exception as e:
+                    logger.warning(f"Не удалось отправить ответ на interaction: {e}")
                     
         except Exception as e:
             logger.error(f"Ошибка в методе revoke_decision: {e}")
             try:
-                await interaction.response.send_message("Произошла ошибка при отзыве решения. Попробуйте еще раз.", ephemeral=True)
-            except:
                 await interaction.followup.send("Произошла ошибка при отзыве решения. Попробуйте еще раз.", ephemeral=True)
+            except Exception as ex:
+                logger.warning(f"Не удалось отправить сообщение об ошибке: {ex}")
 
     async def cancel_revoke_decision(self, interaction: Interaction):
         """Отменяет отзыв (удаляет сообщение) - только для отклоненных пользователей"""
