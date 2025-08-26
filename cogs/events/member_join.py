@@ -63,8 +63,8 @@ async def get_avatar(member):
     return None
 
 class VerificationView(View):
-    def __init__(self, bot: Bot, member, timeout: int = None):
-        super().__init__(timeout=timeout)
+    def __init__(self, bot: Bot, member=None, passport_message_id=None):
+        super().__init__(timeout=None)  # Персистентный View
         self.bot = bot
         self.member = member
         self.settings_manager = SettingsManager()
@@ -74,23 +74,20 @@ class VerificationView(View):
         self.member_role_id = settings.get("member_role_id", 0)
         self.admin_role_ids = normalize_admin_role_ids(settings.get("admin_role_ids", []))
         
-        self.passport_message_id = None  # ID сообщения с паспортом в канале "Добро пожаловать"
+        self.passport_message_id = passport_message_id  # ID сообщения с паспортом в канале "Добро пожаловать"
         self.is_revoke_state = False
-        
-        # Создаем начальные кнопки
-        self.setup_initial_buttons()
 
     def setup_initial_buttons(self):
         """Создает начальные кнопки Принять/Отклонить"""
+        # Очищаем все элементы
         self.clear_items()
         
-        # Кнопка "Принять"
-        accept_btn = Button(label="Принять", style=ButtonStyle.green, disabled=False)
+        # Добавляем кнопки через декораторы (они уже созданы)
+        accept_btn = Button(label="Принять", style=ButtonStyle.green, disabled=False, custom_id="verification:accept")
         accept_btn.callback = self.handle_accept
         self.add_item(accept_btn)
         
-        # Кнопка "Отклонить"
-        reject_btn = Button(label="Отклонить", style=ButtonStyle.red, disabled=False)
+        reject_btn = Button(label="Отклонить", style=ButtonStyle.red, disabled=False, custom_id="verification:reject")
         reject_btn.callback = self.handle_reject
         self.add_item(reject_btn)
 
@@ -98,7 +95,7 @@ class VerificationView(View):
         """Создает кнопку Отозвать решение"""
         self.clear_items()
         
-        revoke_btn = Button(label="Отозвать решение", style=ButtonStyle.gray, disabled=False)
+        revoke_btn = Button(label="Отозвать решение", style=ButtonStyle.gray, disabled=False, custom_id="verification:revoke")
         revoke_btn.callback = self.handle_revoke
         self.add_item(revoke_btn)
         self.is_revoke_state = True
@@ -107,7 +104,7 @@ class VerificationView(View):
         """Создает кнопку Отменить отзыв (только для отклоненных)"""
         self.clear_items()
         
-        cancel_btn = Button(label="Отменить отзыв", style=ButtonStyle.secondary, disabled=False)
+        cancel_btn = Button(label="Отменить отзыв", style=ButtonStyle.secondary, disabled=False, custom_id="verification:cancel_revoke")
         cancel_btn.callback = self.handle_cancel_revoke
         self.add_item(cancel_btn)
 
@@ -115,6 +112,49 @@ class VerificationView(View):
         """Сбрасывает View к исходному состоянию с кнопками Принять/Отклонить"""
         self.is_revoke_state = False
         self.setup_initial_buttons()
+    
+    async def restore_state_from_message(self, message):
+        """Восстанавливает состояние View на основе данных из сообщения"""
+        try:
+            # Получаем member_id из embed'а сообщения
+            if message.embeds:
+                embed = message.embeds[0]
+                # Ищем mention пользователя в description
+                import re
+                mention_match = re.search(r'<@(\d+)>', embed.description or "")
+                if mention_match:
+                    member_id = int(mention_match.group(1))
+                    self.member = message.guild.get_member(member_id)
+                    
+                    # Определяем состояние по заголовку или описанию
+                    title = embed.title.lower() if embed.title else ""
+                    description = embed.description.lower() if embed.description else ""
+                    
+                    # Проверяем существующие паспорта для определения состояния
+                    accept_passport = os.path.join(PASSPORTS_DIR, f"{member_id}_accept.png")
+                    deny_passport = os.path.join(PASSPORTS_DIR, f"{member_id}_deny.png")
+                    empty_passport = os.path.join(PASSPORTS_DIR, f"{member_id}_empty.png")
+                    
+                    if os.path.exists(accept_passport) or os.path.exists(deny_passport):
+                        # Пользователь уже обработан, показываем кнопку отзыва
+                        self.setup_revoke_button()
+                    elif os.path.exists(empty_passport):
+                        # Пользователь ожидает верификации
+                        self.setup_initial_buttons()
+                    else:
+                        # По умолчанию показываем начальные кнопки
+                        self.setup_initial_buttons()
+                        
+                    # Сохраняем ID сообщения с паспортом если это сообщение верификации
+                    if "верификации" in description or "паспорт" in description:
+                        self.passport_message_id = message.id
+                        
+                    logger.info(f"Восстановлено состояние View для пользователя {member_id}")
+                    return True
+        except Exception as e:
+            logger.error(f"Ошибка при восстановлении состояния View: {e}")
+        
+        return False
 
     async def interaction_check(self, interaction: Interaction) -> bool:
         # Обновляем настройки перед проверкой (на случай, если они изменились)
@@ -160,19 +200,48 @@ class VerificationView(View):
 
     async def handle_accept(self, interaction: Interaction):
         """Обработчик кнопки Принять"""
+        # Восстанавливаем информацию о member если она отсутствует
+        if not self.member:
+            await self.restore_member_from_interaction(interaction)
         await self.accept(interaction)
 
     async def handle_reject(self, interaction: Interaction):
         """Обработчик кнопки Отклонить"""
+        # Восстанавливаем информацию о member если она отсутствует
+        if not self.member:
+            await self.restore_member_from_interaction(interaction)
         await self.reject(interaction)
 
     async def handle_revoke(self, interaction: Interaction):
         """Обработчик кнопки Отозвать решение"""
+        # Восстанавливаем информацию о member если она отсутствует
+        if not self.member:
+            await self.restore_member_from_interaction(interaction)
         await self.revoke_decision(interaction)
 
     async def handle_cancel_revoke(self, interaction: Interaction):
         """Обработчик кнопки Отменить отзыв"""
+        # Восстанавливаем информацию о member если она отсутствует
+        if not self.member:
+            await self.restore_member_from_interaction(interaction)
         await self.cancel_revoke_decision(interaction)
+    
+    async def restore_member_from_interaction(self, interaction: Interaction):
+        """Восстанавливает информацию о member из сообщения interaction"""
+        try:
+            if interaction.message and interaction.message.embeds:
+                embed = interaction.message.embeds[0]
+                import re
+                mention_match = re.search(r'<@(\d+)>', embed.description or "")
+                if mention_match:
+                    member_id = int(mention_match.group(1))
+                    self.member = interaction.guild.get_member(member_id)
+                    if self.member:
+                        logger.info(f"Восстановлен member {member_id} из interaction")
+                    else:
+                        logger.warning(f"Не удалось найти member {member_id} на сервере")
+        except Exception as e:
+            logger.error(f"Ошибка при восстановлении member из interaction: {e}")
 
     async def accept(self, interaction: Interaction):
         try:
@@ -491,7 +560,7 @@ class VerificationView(View):
                 await interaction.message.edit(embed=embed, view=self)
                 
                 try:
-                    await interaction.followup.send("Отклонение пользователя отозвано.", ephemeral=True)
+                    await interaction.followup.send("Отклонение пользователя отозвано. Пользователь уведомлен в ЛС.", ephemeral=True)
                 except Exception as e:
                     logger.warning(f"Не удалось отправить ответ на interaction: {e}")
                     # Игнорируем ошибки отправки ответа, главное что действие выполнено
@@ -766,6 +835,7 @@ class MemberJoinEvent(Cog):
             
             # Проверяем существующий пустой паспорт (защита от дублирования)
             view = VerificationView(self.bot, member)
+            view.setup_initial_buttons()  # Инициализируем начальные кнопки
             if await view.check_existing_passport(member):
                 # Если check_existing_passport вернул True, значит пользователь уже обработан
                 # (кикнут за отклоненный паспорт или у него есть пустой паспорт в процессе)
