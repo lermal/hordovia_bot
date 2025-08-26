@@ -491,7 +491,7 @@ class VerificationView(View):
                 await interaction.message.edit(embed=embed, view=self)
                 
                 try:
-                    await interaction.followup.send("Отклонение пользователя отозвано. Пользователь уведомлен в ЛС.", ephemeral=True)
+                    await interaction.followup.send("Отклонение пользователя отозвано.", ephemeral=True)
                 except Exception as e:
                     logger.warning(f"Не удалось отправить ответ на interaction: {e}")
                     # Игнорируем ошибки отправки ответа, главное что действие выполнено
