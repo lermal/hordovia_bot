@@ -298,15 +298,21 @@ class VerificationView(View):
             if member and role and role in member.roles:
                 await member.remove_roles(role)
             
-            # Обновляем сообщение без кнопок
+            # Создаем кнопку для отмены отзыва
+            self.clear_items()
+            cancel_revoke_button = Button(label="Отменить отзыв", style=ButtonStyle.secondary, custom_id="cancel_revoke")
+            cancel_revoke_button.callback = self.cancel_revoke_decision
+            self.add_item(cancel_revoke_button)
+            
+            # Обновляем сообщение
             embed = Embed(
                 title="Решение отозвано",
-                description=f"Решение по пользователю {self.member.mention} было отозвано.",
-                color=Color.blue()
+                description=f"Решение по пользователю {self.member.mention} было отозвано.\nВы можете отменить отзыв, чтобы вернуться к принятию/отклонению.",
+                color=Color.orange()
             )
             embed.add_field(name="ID", value=self.member.id)
             
-            await interaction.message.edit(embed=embed, view=None)
+            await interaction.message.edit(embed=embed, view=self)
             
             # Используем followup вместо response для избежания ошибки истекшего interaction
             try:
@@ -343,6 +349,46 @@ class VerificationView(View):
                 await interaction.response.send_message("Произошла ошибка при отзыве решения. Попробуйте еще раз.", ephemeral=True)
             except:
                 await interaction.followup.send("Произошла ошибка при отзыве решения. Попробуйте еще раз.", ephemeral=True)
+
+    async def cancel_revoke_decision(self, interaction: Interaction):
+        """Отменяет отзыв решения и возвращает кнопки принятия/отклонения"""
+        try:
+            # Возвращаем исходные кнопки
+            self.clear_items()
+            
+            accept_button = Button(label="Принять", style=ButtonStyle.green)
+            accept_button.callback = self.accept
+            self.add_item(accept_button)
+            
+            reject_button = Button(label="Отклонить", style=ButtonStyle.red)
+            reject_button.callback = self.reject
+            self.add_item(reject_button)
+            
+            self.is_revoke_state = False
+            
+            # Обновляем сообщение
+            embed = Embed(
+                title="Отзыв отменен",
+                description=f"Отзыв решения по пользователю {self.member.mention} отменен.\nТеперь можно снова принять или отклонить пользователя.",
+                color=Color.blue()
+            )
+            embed.add_field(name="ID", value=self.member.id)
+            embed.add_field(name="Аккаунт создан", value=self.member.created_at.strftime("%d.%m.%Y"))
+            
+            await interaction.message.edit(embed=embed, view=self)
+            
+            # Используем followup вместо response для избежания ошибки истекшего interaction
+            try:
+                await interaction.response.send_message("Отзыв решения отменен. Можно снова выбрать принять или отклонить.", ephemeral=True)
+            except:
+                await interaction.followup.send("Отзыв решения отменен. Можно снова выбрать принять или отклонить.", ephemeral=True)
+                
+        except Exception as e:
+            logger.error(f"Ошибка в методе cancel_revoke_decision: {e}")
+            try:
+                await interaction.response.send_message("Произошла ошибка при отмене отзыва. Попробуйте еще раз.", ephemeral=True)
+            except:
+                await interaction.followup.send("Произошла ошибка при отмене отзыва. Попробуйте еще раз.", ephemeral=True)
 
     async def create_stamped_passport(self, member, accepted: bool):
         try:
