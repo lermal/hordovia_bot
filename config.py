@@ -29,7 +29,7 @@ GUILD_IDS = [889556917901463602]
 COGS_DIR = "cogs"
 
 # Whether or not the bot should automatically reload cogs when a change is made
-AUTO_RELOAD = True
+AUTO_RELOAD = False
 
 # Twitch configuration
 TWITCH_CLIENT_ID = os.getenv("TWITCH_CLIENT_ID")
