@@ -82,12 +82,26 @@ class VerificationView(View):
         # Очищаем все элементы
         self.clear_items()
         
+        # Формируем custom_id с данными пользователя
+        member_id = self.member.id if self.member else 0
+        passport_msg_id = self.passport_message_id or 0
+        
         # Добавляем кнопки через декораторы (они уже созданы)
-        accept_btn = Button(label="Принять", style=ButtonStyle.green, disabled=False, custom_id="verification:accept")
+        accept_btn = Button(
+            label="Принять", 
+            style=ButtonStyle.green, 
+            disabled=False, 
+            custom_id=f"verification:accept:{member_id}:{passport_msg_id}"
+        )
         accept_btn.callback = self.handle_accept
         self.add_item(accept_btn)
         
-        reject_btn = Button(label="Отклонить", style=ButtonStyle.red, disabled=False, custom_id="verification:reject")
+        reject_btn = Button(
+            label="Отклонить", 
+            style=ButtonStyle.red, 
+            disabled=False, 
+            custom_id=f"verification:reject:{member_id}:{passport_msg_id}"
+        )
         reject_btn.callback = self.handle_reject
         self.add_item(reject_btn)
 
@@ -95,7 +109,16 @@ class VerificationView(View):
         """Создает кнопку Отозвать решение"""
         self.clear_items()
         
-        revoke_btn = Button(label="Отозвать решение", style=ButtonStyle.gray, disabled=False, custom_id="verification:revoke")
+        # Формируем custom_id с данными пользователя
+        member_id = self.member.id if self.member else 0
+        passport_msg_id = self.passport_message_id or 0
+        
+        revoke_btn = Button(
+            label="Отозвать решение", 
+            style=ButtonStyle.gray, 
+            disabled=False, 
+            custom_id=f"verification:revoke:{member_id}:{passport_msg_id}"
+        )
         revoke_btn.callback = self.handle_revoke
         self.add_item(revoke_btn)
         self.is_revoke_state = True
@@ -104,7 +127,16 @@ class VerificationView(View):
         """Создает кнопку Отменить отзыв (только для отклоненных)"""
         self.clear_items()
         
-        cancel_btn = Button(label="Отменить отзыв", style=ButtonStyle.secondary, disabled=False, custom_id="verification:cancel_revoke")
+        # Формируем custom_id с данными пользователя
+        member_id = self.member.id if self.member else 0
+        passport_msg_id = self.passport_message_id or 0
+        
+        cancel_btn = Button(
+            label="Отменить отзыв", 
+            style=ButtonStyle.secondary, 
+            disabled=False, 
+            custom_id=f"verification:cancel_revoke:{member_id}:{passport_msg_id}"
+        )
         cancel_btn.callback = self.handle_cancel_revoke
         self.add_item(cancel_btn)
 
@@ -126,10 +158,6 @@ class VerificationView(View):
                     member_id = int(mention_match.group(1))
                     self.member = message.guild.get_member(member_id)
                     
-                    # Определяем состояние по заголовку или описанию
-                    title = embed.title.lower() if embed.title else ""
-                    description = embed.description.lower() if embed.description else ""
-                    
                     # Проверяем существующие паспорта для определения состояния
                     accept_passport = os.path.join(PASSPORTS_DIR, f"{member_id}_accept.png")
                     deny_passport = os.path.join(PASSPORTS_DIR, f"{member_id}_deny.png")
@@ -145,16 +173,41 @@ class VerificationView(View):
                         # По умолчанию показываем начальные кнопки
                         self.setup_initial_buttons()
                         
-                    # Сохраняем ID сообщения с паспортом если это сообщение верификации
-                    if "верификации" in description or "паспорт" in description:
-                        self.passport_message_id = message.id
+                    # Ищем сообщение с паспортом в welcome канале для получения passport_message_id
+                    await self.find_passport_message_by_member_id(member_id)
                         
-                    logger.info(f"Восстановлено состояние View для пользователя {member_id}")
+                    logger.info(f"Восстановлено состояние View для пользователя {member_id}, passport_message_id: {self.passport_message_id}")
                     return True
         except Exception as e:
             logger.error(f"Ошибка при восстановлении состояния View: {e}")
         
         return False
+    
+    async def find_passport_message_by_member_id(self, member_id: int):
+        """Ищет сообщение с паспортом для указанного member_id в welcome канале."""
+        try:
+            settings = self.settings_manager.get_all_settings().get("verification", {})
+            welcome_channel_id = settings.get("welcome_channel_id", 0)
+            welcome_channel = self.bot.get_channel(welcome_channel_id)
+
+            if welcome_channel:
+                # Ищем сообщение с паспортом в последних сообщениях канала
+                async for message in welcome_channel.history(limit=100):
+                    if message.embeds:
+                        embed = message.embeds[0]
+                        # Ищем mention пользователя в description
+                        import re
+                        mention_match = re.search(r'<@(\d+)>', embed.description or "")
+                        if mention_match and int(mention_match.group(1)) == member_id:
+                            self.passport_message_id = message.id
+                            logger.info(f"Найдено сообщение с паспортом для {member_id}, message_id: {self.passport_message_id}")
+                            return
+                logger.warning(f"Не найдено сообщение с паспортом для {member_id} в канале {welcome_channel.name}")
+            else:
+                logger.warning(f"Не найден канал приветствия с ID: {welcome_channel_id}")
+        except Exception as e:
+            logger.error(f"Ошибка при поиске сообщения с паспортом: {e}")
+            self.passport_message_id = None
 
     async def interaction_check(self, interaction: Interaction) -> bool:
         # Обновляем настройки перед проверкой (на случай, если они изменились)
@@ -200,32 +253,68 @@ class VerificationView(View):
 
     async def handle_accept(self, interaction: Interaction):
         """Обработчик кнопки Принять"""
-        # Восстанавливаем информацию о member если она отсутствует
-        if not self.member:
-            await self.restore_member_from_interaction(interaction)
+        # Восстанавливаем данные из custom_id
+        await self.restore_from_custom_id(interaction)
         await self.accept(interaction)
 
     async def handle_reject(self, interaction: Interaction):
         """Обработчик кнопки Отклонить"""
-        # Восстанавливаем информацию о member если она отсутствует
-        if not self.member:
-            await self.restore_member_from_interaction(interaction)
+        # Восстанавливаем данные из custom_id
+        await self.restore_from_custom_id(interaction)
         await self.reject(interaction)
 
     async def handle_revoke(self, interaction: Interaction):
         """Обработчик кнопки Отозвать решение"""
-        # Восстанавливаем информацию о member если она отсутствует
-        if not self.member:
-            await self.restore_member_from_interaction(interaction)
+        # Восстанавливаем данные из custom_id
+        await self.restore_from_custom_id(interaction)
         await self.revoke_decision(interaction)
 
     async def handle_cancel_revoke(self, interaction: Interaction):
         """Обработчик кнопки Отменить отзыв"""
-        # Восстанавливаем информацию о member если она отсутствует
-        if not self.member:
-            await self.restore_member_from_interaction(interaction)
+        # Восстанавливаем данные из custom_id
+        await self.restore_from_custom_id(interaction)
         await self.cancel_revoke_decision(interaction)
     
+    async def restore_from_custom_id(self, interaction: Interaction):
+        """Восстанавливает member_id и passport_message_id из custom_id кнопки"""
+        try:
+            # Находим нажатую кнопку
+            clicked_button = None
+            for component in interaction.message.components:
+                for item in component.children:
+                    if hasattr(item, 'custom_id') and item.custom_id:
+                        # Проверяем, была ли нажата эта кнопка (по interaction.data)
+                        if interaction.data.get('custom_id') == item.custom_id:
+                            clicked_button = item
+                            break
+                if clicked_button:
+                    break
+            
+            if clicked_button and clicked_button.custom_id:
+                # Парсим custom_id: "verification:action:member_id:passport_msg_id"
+                parts = clicked_button.custom_id.split(':')
+                if len(parts) >= 4:
+                    member_id = int(parts[2])
+                    passport_msg_id = int(parts[3]) if parts[3] != '0' else None
+                    
+                    # Восстанавливаем member
+                    if not self.member or self.member.id != member_id:
+                        self.member = interaction.guild.get_member(member_id)
+                        if self.member:
+                            logger.info(f"Восстановлен member {member_id} из custom_id")
+                        else:
+                            logger.warning(f"Не удалось найти member {member_id} на сервере")
+                    
+                    # Восстанавливаем passport_message_id
+                    if passport_msg_id and passport_msg_id != self.passport_message_id:
+                        self.passport_message_id = passport_msg_id
+                        logger.info(f"Восстановлен passport_message_id {passport_msg_id} из custom_id")
+                        
+        except Exception as e:
+            logger.error(f"Ошибка при восстановлении данных из custom_id: {e}")
+            # Fallback к старому методу
+            await self.restore_member_from_interaction(interaction)
+
     async def restore_member_from_interaction(self, interaction: Interaction):
         """Восстанавливает информацию о member из сообщения interaction"""
         try:
@@ -238,6 +327,9 @@ class VerificationView(View):
                     self.member = interaction.guild.get_member(member_id)
                     if self.member:
                         logger.info(f"Восстановлен member {member_id} из interaction")
+                        # Также восстанавливаем passport_message_id если он отсутствует
+                        if not self.passport_message_id:
+                            await self.find_passport_message_by_member_id(member_id)
                     else:
                         logger.warning(f"Не удалось найти member {member_id} на сервере")
         except Exception as e:
@@ -738,7 +830,7 @@ class VerificationView(View):
             logger.error(f"Ошибка при создании паспорта: {e}")
             raise
 
-class MemberJoinEvent(Cog):
+    class MemberJoinEvent(Cog):
     def __init__(self, bot: Bot):
         self.bot = bot
         self.settings_manager = SettingsManager()
@@ -887,8 +979,27 @@ class MemberJoinEvent(Cog):
                 
                 content = f"{ping_text}\n**Новый пользователь ожидает верификации**" if ping_text else "**Новый пользователь ожидает верификации**"
                 
-                await verification_channel.send(content=content, embed=embed, view=view)
+                verification_message = await verification_channel.send(content=content, embed=embed, view=view)
                 logger.info(f"Отправлено сообщение верификации для {member.id}")
+                
+                # Обновляем кнопки после создания паспорта (в фоновой задаче)
+                async def update_buttons_after_passport():
+                    # Ждем завершения создания паспорта (максимум 30 секунд)
+                    for _ in range(30):
+                        if view.passport_message_id is not None:
+                            break
+                        await asyncio.sleep(1)
+                    
+                    # Обновляем кнопки с правильным passport_message_id
+                    try:
+                        view.setup_initial_buttons()
+                        await verification_message.edit(view=view)
+                        logger.info(f"Обновлены кнопки верификации для {member.id} с passport_message_id: {view.passport_message_id}")
+                    except Exception as e:
+                        logger.error(f"Ошибка при обновлении кнопок верификации для {member.id}: {e}")
+                
+                # Запускаем обновление кнопок в фоне
+                asyncio.create_task(update_buttons_after_passport())
             else:
                 logger.warning(f"Не найден канал верификации с ID: {verification_channel_id}")
         
