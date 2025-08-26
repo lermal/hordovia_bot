@@ -92,6 +92,7 @@ class VerificationView(View):
         # Проверяем оба варианта паспорта (принятый и отклоненный)
         accept_passport = os.path.join(PASSPORTS_DIR, f"{member.id}_accept.png")
         deny_passport = os.path.join(PASSPORTS_DIR, f"{member.id}_deny.png")
+        empty_passport = os.path.join(PASSPORTS_DIR, f"{member.id}_empty.png")
         
         if os.path.exists(deny_passport):
             try:
@@ -100,11 +101,13 @@ class VerificationView(View):
                 pass
             await member.kick(reason="Ранее отклоненная заявка")
             return True
-        elif os.path.exists(accept_passport):
-            # Не даем роль автоматически, просто возвращаем True чтобы пропустить создание нового паспорта
-            # Роль будет выдана только при повторном принятии через кнопку
-            logger.info(f"Найден существующий принятый паспорт для {member.id}, пропускаем создание нового")
+        elif os.path.exists(empty_passport):
+            # Если есть пустой паспорт, значит пользователь уже в процессе верификации
+            logger.info(f"Найден существующий пустой паспорт для {member.id}, пропускаем создание нового")
             return True
+        elif os.path.exists(accept_passport):
+            # Для принятых паспортов возвращаем False, чтобы обработка продолжилась в on_member_join
+            return False
         return False
 
     @button(label="Принять", style=ButtonStyle.green)
@@ -465,29 +468,29 @@ class MemberJoinEvent(Cog):
                         await member.add_roles(role)
                         logger.info(f"Выдана роль хордовца пользователю {member.id}")
                 
-                # Отправляем паспорт в канал приветствия
+                # Отправляем сообщение и паспорт в канал приветствия
                 welcome_channel = self.bot.get_channel(welcome_channel_id)
-                if welcome_channel and os.path.exists(accepted_passport_path):
+                if welcome_channel:
                     embed = Embed(
-                        title="🛂 Возвращение гражданина",
-                        description=f"Гражданин {member.mention} вернулся в Хордовию!\nПаспорт действителен.",
+                        title="🛂 Хордовец вернулся!",
+                        description=f"Хордовец {member.mention} вернулся на сервер!\nДобро пожаловать домой, товарищ!",
                         color=Color.green()
                     )
-                    embed.set_image(url="attachment://passport.png")
-                    await welcome_channel.send(
-                        embed=embed, 
-                        file=File(accepted_passport_path, filename="passport.png")
-                    )
-                    logger.info(f"Отправлен готовый паспорт для возвращающегося пользователя {member.id}")
-                else:
-                    # Если нет канала приветствия, отправляем простое сообщение
-                    if welcome_channel:
-                        welcome_embed = Embed(
-                            title="Welcome back to Hordovia!",
-                            description=f"С возвращением в Хордовию, товарищ {member.mention}!\nВаш паспорт по-прежнему действителен.",
-                            color=Color.green()
+                    
+                    # Отправляем сообщение с паспортом
+                    if os.path.exists(accepted_passport_path):
+                        embed.set_image(url="attachment://passport.png")
+                        await welcome_channel.send(
+                            embed=embed, 
+                            file=File(accepted_passport_path, filename="passport.png")
                         )
-                        await welcome_channel.send(embed=welcome_embed)
+                        logger.info(f"Отправлено сообщение о возвращении хордовца {member.id} с паспортом")
+                    else:
+                        # Если файл паспорта не найден, отправляем просто сообщение
+                        await welcome_channel.send(embed=embed)
+                        logger.info(f"Отправлено сообщение о возвращении хордовца {member.id} без паспорта")
+                else:
+                    logger.warning(f"Не найден канал приветствия с ID: {welcome_channel_id}")
                 
                 # Убираем пользователя из обработки
                 self.processing_users.discard(member.id)
@@ -513,10 +516,12 @@ class MemberJoinEvent(Cog):
             # Проверяем существующий пустой паспорт (защита от дублирования)
             view = VerificationView(self.bot, member)
             if await view.check_existing_passport(member):
-                logger.info(f"Найден существующий пустой паспорт для {member.id}, пропускаем создание нового")
+                # Если check_existing_passport вернул True, значит пользователь уже обработан
+                # (кикнут за отклоненный паспорт или у него есть пустой паспорт в процессе)
+                self.processing_users.discard(member.id)
                 return
                 
-            # Создаем эмбед
+            # Создаем эмбед для верификации
             embed = await self.create_verification_embed(member)
             
             # Создаем пустой паспорт в фоне (не блокируем основной поток)
