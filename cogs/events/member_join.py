@@ -444,6 +444,52 @@ class VerificationView(View):
             except:
                 await interaction.followup.send("Произошла ошибка при удалении сообщения.", ephemeral=True)
 
+    async def create_empty_passport(self, member):
+        """Создает пустой паспорт для пользователя"""
+        try:
+            # Проверяем существование директории для шаблонов
+            if not os.path.exists("images/passport_template"):
+                os.makedirs("images/passport_template")
+            
+            # Проверяем существование необходимых файлов
+            template_path = "images/passport_template/new-passport.png"
+            
+            if not os.path.exists(template_path):
+                raise FileNotFoundError(f"Не найден файл шаблона паспорта: {template_path}")
+            
+            # Создаем базовый паспорт
+            img = Image.open(template_path)
+            draw = ImageDraw.Draw(img)
+            
+            # Загружаем аватарку асинхронно, но не ждем её
+            avatar_task = asyncio.create_task(get_avatar(member))
+            
+            # Добавляем информацию на паспорт (это быстро)
+            draw.text((40, img.height - 390), member.name, font=get_font(64), fill="#584a48")
+            draw.text((370, img.height - 338), f"{member.created_at.strftime('%d %B, %Y')}", font=get_font(48), fill="#584a48")
+            draw.text((370, img.height - 285), f"{member.joined_at.strftime('%d %B, %Y')}", font=get_font(48), fill="#584a48")
+            draw.text((40, img.height - 83), f"{member.id}", font=get_font(60), fill="#584a48")
+            
+            # Теперь ждем аватарку (если она еще загружается)
+            try:
+                avatar = await asyncio.wait_for(avatar_task, timeout=3.0)  # Ждем максимум 3 секунды
+                if avatar:
+                    # Вставляем аватарку в паспорт
+                    avatar_x = 40
+                    avatar_y = 550
+                    img.paste(avatar, (avatar_x, avatar_y))
+            except asyncio.TimeoutError:
+                logger.warning(f"Таймаут загрузки аватарки для {member.id}")
+            except Exception as e:
+                logger.warning(f"Ошибка при добавлении аватарки для {member.id}: {e}")
+            
+            # Сохраняем результат
+            passport_path = os.path.join(PASSPORTS_DIR, f"{member.id}_empty.png")
+            img.save(passport_path, optimize=True)  # Оптимизируем сохранение
+            return passport_path
+        except Exception as e:
+            logger.error(f"Ошибка при создании пустого паспорта: {e}")
+            raise
 
     async def create_stamped_passport(self, member, accepted: bool):
         try:
