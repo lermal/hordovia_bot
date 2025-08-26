@@ -830,6 +830,7 @@ class VerificationView(View):
             logger.error(f"Ошибка при создании паспорта: {e}")
             raise
 
+
 class MemberJoinEvent(Cog):
     def __init__(self, bot: Bot):
         self.bot = bot
