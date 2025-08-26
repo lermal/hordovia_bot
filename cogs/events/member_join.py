@@ -427,73 +427,149 @@ class MemberJoinEvent(Cog):
         # Создаем директорию для паспортов, если её нет
         if not os.path.exists(PASSPORTS_DIR):
             os.makedirs(PASSPORTS_DIR)
+        
+        # Словарь для отслеживания обрабатываемых пользователей (предотвращает дублирование)
+        self.processing_users = set()
 
     @Cog.listener()
     async def on_member_join(self, member):
-        # Обновляем настройки верификации (на случай, если они изменились)
-        settings = self.settings_manager.get_all_settings().get("verification", {})
-        self.admin_role_ids = settings.get("admin_role_ids", [])
-        
-        welcome_channel_id = settings.get("welcome_channel_id", 0)
-        verification_channel_id = settings.get("verification_channel_id", 0)
-        
-        # Проверяем существующий паспорт
-        view = VerificationView(self.bot, member)
-        if await view.check_existing_passport(member):
+        # Проверяем, не обрабатывается ли уже этот пользователь
+        if member.id in self.processing_users:
+            logger.warning(f"Пользователь {member.id} уже обрабатывается, пропускаем")
             return
+        
+        try:
+            # Добавляем пользователя в обработку
+            self.processing_users.add(member.id)
             
-        # Создаем эмбед
-        embed = await self.create_verification_embed(member)
-        
-        # Создаем пустой паспорт в фоне (не блокируем основной поток)
-        async def create_passport_background():
-            try:
-                passport_path = await self.create_empty_passport(member)
-                # Отправляем сообщение с паспортом в канал приветствия
-                welcome_channel = self.bot.get_channel(welcome_channel_id)
-                if welcome_channel:
-                    welcome_embed = Embed(
-                        title="Welcome to Hordovia!",
-                        description=f"Добро пожаловать на территорию Хордовии, товарищ {member.mention}!\nСлава Хордовии! Спасибо за борщ!",
-                        color=Color.blue()
-                    )
-                    welcome_embed.set_image(url="attachment://passport.png")
-                    passport_message = await welcome_channel.send(embed=welcome_embed, file=File(passport_path, filename="passport.png"))
-                    view.passport_message_id = passport_message.id  # Сохраняем ID сообщения
-                    logger.info(f"Создано сообщение с паспортом для {member.id}, message_id: {passport_message.id}")
-                else:
-                    logger.warning(f"Не найден канал приветствия с ID: {welcome_channel_id}")
-            except Exception as e:
-                logger.error(f"Ошибка при создании пустого паспорта для {member.id}: {e}")
-                view.passport_message_id = None
-        
-        # Запускаем создание паспорта в фоне
-        asyncio.create_task(create_passport_background())
-        
-        # Отправляем сообщение с кнопками в канал верификации (это происходит сразу)
-        verification_channel = self.bot.get_channel(verification_channel_id)
-        if verification_channel:
-            # Формируем пинг админских ролей
-            admin_ping = ""
-            if self.admin_role_ids:
-                # Проверяем тип данных - может быть список или число
-                if isinstance(self.admin_role_ids, list):
-                    role_ids = self.admin_role_ids
-                elif isinstance(self.admin_role_ids, int):
-                    role_ids = [self.admin_role_ids]
-                else:
-                    role_ids = []
+            # Обновляем настройки верификации (на случай, если они изменились)
+            settings = self.settings_manager.get_all_settings().get("verification", {})
+            self.admin_role_ids = settings.get("admin_role_ids", [])
+            
+            welcome_channel_id = settings.get("welcome_channel_id", 0)
+            verification_channel_id = settings.get("verification_channel_id", 0)
+            member_role_id = settings.get("member_role_id", 0)
+            
+            # Проверяем, есть ли уже принятый паспорт (для возвращающихся пользователей)
+            accepted_passport_path = os.path.join(PASSPORTS_DIR, f"{member.id}_accept.png")
+            rejected_passport_path = os.path.join(PASSPORTS_DIR, f"{member.id}_reject.png")
+            
+            if os.path.exists(accepted_passport_path):
+                # Пользователь возвращается с принятым паспортом
+                logger.info(f"Пользователь {member.id} возвращается с принятым паспортом")
                 
-                if role_ids:
-                    admin_ping = " ".join([f"<@&{role_id}>" for role_id in role_ids])
+                # Выдаем роль хордовца
+                if member_role_id:
+                    role = member.guild.get_role(member_role_id)
+                    if role:
+                        await member.add_roles(role)
+                        logger.info(f"Выдана роль хордовца пользователю {member.id}")
+                
+                # Отправляем паспорт в канал приветствия
+                welcome_channel = self.bot.get_channel(welcome_channel_id)
+                if welcome_channel and os.path.exists(accepted_passport_path):
+                    embed = Embed(
+                        title="🛂 Возвращение гражданина",
+                        description=f"Гражданин {member.mention} вернулся в Хордовию!\nПаспорт действителен.",
+                        color=Color.green()
+                    )
+                    embed.set_image(url="attachment://passport.png")
+                    await welcome_channel.send(
+                        embed=embed, 
+                        file=File(accepted_passport_path, filename="passport.png")
+                    )
+                    logger.info(f"Отправлен готовый паспорт для возвращающегося пользователя {member.id}")
+                else:
+                    # Если нет канала приветствия, отправляем простое сообщение
+                    if welcome_channel:
+                        welcome_embed = Embed(
+                            title="Welcome back to Hordovia!",
+                            description=f"С возвращением в Хордовию, товарищ {member.mention}!\nВаш паспорт по-прежнему действителен.",
+                            color=Color.green()
+                        )
+                        await welcome_channel.send(embed=welcome_embed)
+                
+                # Убираем пользователя из обработки
+                self.processing_users.discard(member.id)
+                return
             
-            # Отправляем сообщение с пингом админов
-            if admin_ping:
-                message_content = f"<:weeeee:834534303705726986> Новый Хордовец {member.mention} прибыл !\n\nВызываем {admin_ping} !"
+            elif os.path.exists(rejected_passport_path):
+                # Пользователь возвращается с отклоненным паспортом
+                logger.info(f"Пользователь {member.id} возвращается с отклоненным паспортом")
+                
+                # Отправляем сообщение о необходимости повторной верификации
+                verification_channel = self.bot.get_channel(verification_channel_id)
+                if verification_channel:
+                    embed = Embed(
+                        title="⚠️ Повторная верификация",
+                        description=f"Пользователь {member.mention} возвращается с ранее отклоненным паспортом.\nТребуется повторная проверка.",
+                        color=Color.orange()
+                    )
+                    await verification_channel.send(embed=embed)
+                
+                # Удаляем старый отклоненный паспорт для создания нового
+                os.remove(rejected_passport_path)
+            
+            # Проверяем существующий пустой паспорт (защита от дублирования)
+            view = VerificationView(self.bot, member)
+            if await view.check_existing_passport(member):
+                logger.info(f"Найден существующий пустой паспорт для {member.id}, пропускаем создание нового")
+                return
+                
+            # Создаем эмбед
+            embed = await self.create_verification_embed(member)
+            
+            # Создаем пустой паспорт в фоне (не блокируем основной поток)
+            async def create_passport_background():
+                try:
+                    passport_path = await self.create_empty_passport(member)
+                    # Отправляем сообщение с паспортом в канал приветствия
+                    welcome_channel = self.bot.get_channel(welcome_channel_id)
+                    if welcome_channel:
+                        welcome_embed = Embed(
+                            title="Welcome to Hordovia!",
+                            description=f"Добро пожаловать на территорию Хордовии, товарищ {member.mention}!\nСлава Хордовии! Спасибо за борщ!",
+                            color=Color.blue()
+                        )
+                        welcome_embed.set_image(url="attachment://passport.png")
+                        passport_message = await welcome_channel.send(embed=welcome_embed, file=File(passport_path, filename="passport.png"))
+                        view.passport_message_id = passport_message.id  # Сохраняем ID сообщения
+                        logger.info(f"Создано сообщение с паспортом для {member.id}, message_id: {passport_message.id}")
+                    else:
+                        logger.warning(f"Не найден канал приветствия с ID: {welcome_channel_id}")
+                except Exception as e:
+                    logger.error(f"Ошибка при создании пустого паспорта для {member.id}: {e}")
+                    view.passport_message_id = None
+                finally:
+                    # Убираем пользователя из обработки после завершения
+                    self.processing_users.discard(member.id)
+            
+            # Запускаем создание паспорта в фоне
+            asyncio.create_task(create_passport_background())
+            
+            # Отправляем сообщение с кнопками в канал верификации (это происходит сразу)
+            verification_channel = self.bot.get_channel(verification_channel_id)
+            if verification_channel:
+                # Формируем пинг админских ролей
+                admin_pings = []
+                for role_id in self.admin_role_ids:
+                    role = member.guild.get_role(role_id)
+                    if role:
+                        admin_pings.append(role.mention)
+                
+                ping_text = " ".join(admin_pings) if admin_pings else ""
+                
+                content = f"{ping_text}\n**Новый пользователь ожидает верификации**" if ping_text else "**Новый пользователь ожидает верификации**"
+                
+                await verification_channel.send(content=content, embed=embed, view=view)
+                logger.info(f"Отправлено сообщение верификации для {member.id}")
             else:
-                message_content = f"<:weeeee:834534303705726986> Новый Хордовец {member.mention} прибыл !"
-            
-            await verification_channel.send(message_content, embed=embed, view=view)
+                logger.warning(f"Не найден канал верификации с ID: {verification_channel_id}")
+        
+        except Exception as e:
+            logger.error(f"Ошибка при обработке присоединения пользователя {member.id}: {e}")
+            # Убираем пользователя из обработки при ошибке
+            self.processing_users.discard(member.id)
 
     async def create_verification_embed(self, member):
         embed = Embed(

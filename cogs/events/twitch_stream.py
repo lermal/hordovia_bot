@@ -160,6 +160,60 @@ class TwitchStream(Cog):
             logger.error(f"Twitch: Ошибка при получении токена: {e}")
             logger.error(f"Twitch: Проверьте значения TWITCH_CLIENT_ID и TWITCH_CLIENT_SECRET в .env файле")
 
+    async def _check_stream_chunk(self, chunk, active_streams, streamers):
+        try:
+            async with aiohttp.ClientSession() as session:
+                # Формируем URL запроса с повторяющимися параметрами user_login
+                params = []
+                for login in chunk:
+                    params.append(f"user_login={login}")
+                url = f"https://api.twitch.tv/helix/streams?{'&'.join(params)}"
+                
+                headers = {
+                    'Client-ID': TWITCH_CLIENT_ID,
+                    'Authorization': f'Bearer {self.access_token}'
+                }
+                
+                logger.debug(f"Twitch: Отправляем запрос к {url}")
+                logger.debug(f"Twitch: Заголовки: {headers}")
+                logger.debug(f"Twitch: Стримеры для проверки: {chunk}")
+                
+                # Добавляем таймаут и retry логику
+                timeout = aiohttp.ClientTimeout(total=30, connect=10)
+                
+                async with session.get(url, headers=headers, timeout=timeout) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        active_streams.update({stream['user_login'].lower(): stream for stream in data['data']})
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"Twitch: Ошибка проверки стрима: {response.status}")
+                        logger.error(f"Twitch: URL запроса: {url}")
+                        logger.error(f"Twitch: Заголовки запроса: {headers}")
+                        logger.error(f"Twitch: Ответ сервера: {error_text}")
+                        
+                        # Если токен истек или недействителен, получаем новый
+                        if response.status == 401:
+                            logger.info("Twitch: Токен недействителен, получаем новый")
+                            await self.get_access_token()
+                        elif response.status == 400:
+                            logger.error("Twitch: Неправильный запрос. Проверьте параметры запроса.")
+                            # Проверяем, не слишком ли много стримеров в запросе
+                            if len(chunk) > 100:
+                                logger.error("Twitch: Слишком много стримеров в одном запросе (максимум 100)")
+                            # Проверяем, нет ли пустых логинов
+                            empty_logins = [login for login in chunk if not login.strip()]
+                            if empty_logins:
+                                logger.error(f"Twitch: Найдены пустые логины: {empty_logins}")
+        except aiohttp.ClientConnectorDNSError as e:
+            logger.warning(f"Twitch: Проблема с DNS резолюцией, пропускаем проверку: {e}")
+        except aiohttp.ClientConnectorError as e:
+            logger.warning(f"Twitch: Проблема с подключением к серверу, пропускаем проверку: {e}")
+        except asyncio.TimeoutError:
+            logger.warning("Twitch: Таймаут при запросе к API, пропускаем проверку")
+        except Exception as e:
+            logger.error(f"Twitch: Неожиданная ошибка при проверке стрима: {e}")
+
     async def check_stream_status(self):
         """Проверка статуса стрима"""
         try:
@@ -192,8 +246,15 @@ class TwitchStream(Cog):
             
             active_streams = {}
             
+            # Проверяем каждый чанк с обработкой ошибок
             for chunk in user_login_chunks:
-                await self._check_stream_chunk(chunk, active_streams, streamers)
+                try:
+                    await self._check_stream_chunk(chunk, active_streams, streamers)
+                    # Небольшая пауза между запросами
+                    await asyncio.sleep(0.5)
+                except Exception as e:
+                    logger.warning(f"Twitch: Ошибка при проверке чанка стримеров {chunk}: {e}")
+                    continue
             
             # Обрабатываем результаты после всех чанков
             for channel, streamer_data in streamers.items():
@@ -220,51 +281,9 @@ class TwitchStream(Cog):
                         logger.info(f"Twitch: У {channel} изменилась категория на {current_category}")
                         await self.update_stream_category(channel, active_streams[channel])
         except Exception as e:
-            logger.error(f"Twitch: Ошибка при проверке стрима: {e}")
+            logger.error(f"Twitch: Критическая ошибка при проверке стрима: {e}")
             import traceback
             logger.error(f"Twitch: Полный стек ошибки: {traceback.format_exc()}")
-
-    async def _check_stream_chunk(self, chunk, active_streams, streamers):
-        async with aiohttp.ClientSession() as session:
-            # Формируем URL запроса с повторяющимися параметрами user_login
-            params = []
-            for login in chunk:
-                params.append(f"user_login={login}")
-            url = f"https://api.twitch.tv/helix/streams?{'&'.join(params)}"
-            
-            headers = {
-                'Client-ID': TWITCH_CLIENT_ID,
-                'Authorization': f'Bearer {self.access_token}'
-            }
-            
-            logger.debug(f"Twitch: Отправляем запрос к {url}")
-            logger.debug(f"Twitch: Заголовки: {headers}")
-            logger.debug(f"Twitch: Стримеры для проверки: {chunk}")
-            
-            async with session.get(url, headers=headers) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    active_streams.update({stream['user_login'].lower(): stream for stream in data['data']})
-                else:
-                    error_text = await response.text()
-                    logger.error(f"Twitch: Ошибка проверки стрима: {response.status}")
-                    logger.error(f"Twitch: URL запроса: {url}")
-                    logger.error(f"Twitch: Заголовки запроса: {headers}")
-                    logger.error(f"Twitch: Ответ сервера: {error_text}")
-                    
-                    # Если токен истек или недействителен, получаем новый
-                    if response.status == 401:
-                        logger.info("Twitch: Токен недействителен, получаем новый")
-                        await self.get_access_token()
-                    elif response.status == 400:
-                        logger.error("Twitch: Неправильный запрос. Проверьте параметры запроса.")
-                        # Проверяем, не слишком ли много стримеров в запросе
-                        if len(chunk) > 100:
-                            logger.error("Twitch: Слишком много стримеров в одном запросе (максимум 100)")
-                        # Проверяем, нет ли пустых логинов
-                        empty_logins = [login for login in chunk if not login.strip()]
-                        if empty_logins:
-                            logger.error(f"Twitch: Найдены пустые логины: {empty_logins}")
 
     async def get_user_avatar(self, login):
         """Получить URL аватарки стримера по логину с кэшированием"""
