@@ -72,10 +72,38 @@ class VerificationView(View):
         # Получаем настройки верификации
         settings = self.settings_manager.get_all_settings().get("verification", {})
         self.member_role_id = settings.get("member_role_id", 0)
-        self.admin_role_ids = settings.get("admin_role_ids", [])
+        self.admin_role_ids = normalize_admin_role_ids(settings.get("admin_role_ids", []))
         
         self.passport_message_id = None  # ID сообщения с паспортом в канале "Добро пожаловать"
         self.is_revoke_state = False
+
+    def reset_to_initial_state(self):
+        """Сбрасывает View к исходному состоянию с кнопками Принять/Отклонить"""
+        self.clear_items()
+        self.is_revoke_state = False
+        
+        # Воссоздаем кнопки программно, но правильно
+        from nextcord.ui import Button
+        
+        # Создаем кнопку "Принять"
+        accept_btn = Button(label="Принять", style=ButtonStyle.green)
+        
+        # Создаем обертку для метода accept
+        async def accept_callback(interaction):
+            await self.accept(accept_btn, interaction)
+        accept_btn.callback = accept_callback
+        
+        # Создаем кнопку "Отклонить"  
+        reject_btn = Button(label="Отклонить", style=ButtonStyle.red)
+        
+        # Создаем обертку для метода reject
+        async def reject_callback(interaction):
+            await self.reject(reject_btn, interaction)
+        reject_btn.callback = reject_callback
+        
+        # Добавляем кнопки к View
+        self.add_item(accept_btn)
+        self.add_item(reject_btn)
 
     async def interaction_check(self, interaction: Interaction) -> bool:
         # Обновляем настройки перед проверкой (на случай, если они изменились)
@@ -337,17 +365,7 @@ class VerificationView(View):
                         logger.error(f"Ошибка при обновлении сообщения с паспортом: {e}")
                 
                 # Возвращаем кнопки принятия/отклонения (БЕЗ кнопки отмены отзыва)
-                self.clear_items()
-                
-                accept_button = Button(label="Принять", style=ButtonStyle.green)
-                accept_button.callback = self.accept
-                self.add_item(accept_button)
-                
-                reject_button = Button(label="Отклонить", style=ButtonStyle.red)
-                reject_button.callback = self.reject
-                self.add_item(reject_button)
-                
-                self.is_revoke_state = False
+                self.reset_to_initial_state()
                 
                 # Обновляем сообщение в канале верификации
                 embed = Embed(
