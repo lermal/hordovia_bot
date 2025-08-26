@@ -305,34 +305,38 @@ class VerificationView(View):
                     await member.remove_roles(role)
                     logger.info(f"Роль хордовца снята с пользователя {self.member.id}")
                 
-                # Создаем пустой паспорт
-                try:
-                    empty_passport_path = await self.create_empty_passport(self.member)
-                    logger.info(f"Создан пустой паспорт для {self.member.id}")
-                except Exception as e:
-                    logger.error(f"Ошибка при создании пустого паспорта: {e}")
-                    empty_passport_path = None
-                
-                # Обновляем сообщение в канале приветствия
+                # Удаляем старое сообщение и создаем новое с пустым паспортом
                 settings = self.settings_manager.get_all_settings().get("verification", {})
                 welcome_channel_id = settings.get("welcome_channel_id", 0)
                 welcome_channel = self.bot.get_channel(welcome_channel_id)
                 
-                if welcome_channel and self.passport_message_id and empty_passport_path:
+                if welcome_channel and self.passport_message_id:
                     try:
-                        passport_message = await welcome_channel.fetch_message(self.passport_message_id)
+                        # Удаляем старое сообщение
+                        old_message = await welcome_channel.fetch_message(self.passport_message_id)
+                        await old_message.delete()
+                        logger.info(f"Удалено старое сообщение с принятым паспортом для {self.member.id}")
+                        
+                        # Создаем пустой паспорт
+                        empty_passport_path = await self.create_empty_passport(self.member)
+                        
+                        # Отправляем новое сообщение с пустым паспортом
                         welcome_embed = Embed(
                             title="Welcome to Hordovia!",
                             description=f"Добро пожаловать на территорию Хордовии, товарищ {self.member.mention}!\nСлава Хордовии! Спасибо за борщ!",
                             color=Color.blue()
                         )
                         welcome_embed.set_image(url="attachment://passport.png")
-                        await passport_message.edit(embed=welcome_embed, file=File(empty_passport_path, filename="passport.png"))
-                        logger.info(f"Сообщение с паспортом обновлено на пустой для {self.member.id}")
+                        new_message = await welcome_channel.send(embed=welcome_embed, file=File(empty_passport_path, filename="passport.png"))
+                        
+                        # Обновляем ID сообщения
+                        self.passport_message_id = new_message.id
+                        logger.info(f"Создано новое сообщение с пустым паспортом для {self.member.id}, message_id: {new_message.id}")
+                        
                     except Exception as e:
                         logger.error(f"Ошибка при обновлении сообщения с паспортом: {e}")
                 
-                # Возвращаем кнопки принятия/отклонения
+                # Возвращаем кнопки принятия/отклонения (БЕЗ кнопки отмены отзыва)
                 self.clear_items()
                 
                 accept_button = Button(label="Принять", style=ButtonStyle.green)
@@ -369,51 +373,31 @@ class VerificationView(View):
                 if os.path.exists(deny_passport):
                     os.remove(deny_passport)
                 
-                # Создаем пустой паспорт
+                # Отправляем ЛС пользователю о том, что отклонение отменено
                 try:
-                    empty_passport_path = await self.create_empty_passport(self.member)
-                    logger.info(f"Создан пустой паспорт для {self.member.id}")
+                    dm_embed = Embed(
+                        title="Решение об отклонении отменено",
+                        description=f"Привет! Решение об отклонении твоей заявки на сервер **{interaction.guild.name}** было отменено.\n\nТы можешь снова попытаться присоединиться к серверу.",
+                        color=Color.green()
+                    )
+                    await self.member.send(embed=dm_embed)
+                    logger.info(f"Отправлено ЛС пользователю {self.member.id} об отмене отклонения")
                 except Exception as e:
-                    logger.error(f"Ошибка при создании пустого паспорта: {e}")
-                    empty_passport_path = None
+                    logger.warning(f"Не удалось отправить ЛС пользователю {self.member.id}: {e}")
                 
-                # Обновляем сообщение в канале приветствия
-                settings = self.settings_manager.get_all_settings().get("verification", {})
-                welcome_channel_id = settings.get("welcome_channel_id", 0)
-                welcome_channel = self.bot.get_channel(welcome_channel_id)
-                
-                if welcome_channel and self.passport_message_id and empty_passport_path:
-                    try:
-                        passport_message = await welcome_channel.fetch_message(self.passport_message_id)
-                        welcome_embed = Embed(
-                            title="Welcome to Hordovia!",
-                            description=f"Добро пожаловать на территорию Хордовии, товарищ {self.member.mention}!\nСлава Хордовии! Спасибо за борщ!",
-                            color=Color.blue()
-                        )
-                        welcome_embed.set_image(url="attachment://passport.png")
-                        await passport_message.edit(embed=welcome_embed, file=File(empty_passport_path, filename="passport.png"))
-                        logger.info(f"Сообщение с паспортом обновлено на пустой для {self.member.id}")
-                    except Exception as e:
-                        logger.error(f"Ошибка при обновлении сообщения с паспортом: {e}")
-                
-                # Возвращаем кнопки принятия/отклонения
+                # Создаем кнопку "Отменить отзыв"
                 self.clear_items()
+                cancel_revoke_button = Button(label="Отменить отзыв", style=ButtonStyle.secondary, custom_id="cancel_revoke")
+                cancel_revoke_button.callback = self.cancel_revoke_decision
+                self.add_item(cancel_revoke_button)
                 
-                accept_button = Button(label="Принять", style=ButtonStyle.green)
-                accept_button.callback = self.accept
-                self.add_item(accept_button)
-                
-                reject_button = Button(label="Отклонить", style=ButtonStyle.red)
-                reject_button.callback = self.reject
-                self.add_item(reject_button)
-                
-                self.is_revoke_state = False
+                self.is_revoke_state = True
                 
                 # Обновляем сообщение в канале верификации
                 embed = Embed(
                     title="Отклонение отозвано",
-                    description=f"Отклонение пользователя {self.member.mention} отозвано.\nПользователь возвращен к статусу ожидания верификации.",
-                    color=Color.blue()
+                    description=f"Отклонение пользователя {self.member.mention} отозвано.\nПользователю отправлено уведомление в личные сообщения.",
+                    color=Color.orange()
                 )
                 embed.add_field(name="ID", value=self.member.id)
                 embed.add_field(name="Аккаунт создан", value=self.member.created_at.strftime("%d.%m.%Y"))
@@ -421,9 +405,9 @@ class VerificationView(View):
                 await interaction.message.edit(embed=embed, view=self)
                 
                 try:
-                    await interaction.response.send_message("Отклонение пользователя отозвано. Пользователь возвращен к ожиданию верификации.", ephemeral=True)
+                    await interaction.response.send_message("Отклонение пользователя отозвано. Пользователь уведомлен в ЛС.", ephemeral=True)
                 except:
-                    await interaction.followup.send("Отклонение пользователя отозвано. Пользователь возвращен к ожиданию верификации.", ephemeral=True)
+                    await interaction.followup.send("Отклонение пользователя отозвано. Пользователь уведомлен в ЛС.", ephemeral=True)
             
             else:
                 # Неизвестное состояние
@@ -439,6 +423,26 @@ class VerificationView(View):
                 await interaction.response.send_message("Произошла ошибка при отзыве решения. Попробуйте еще раз.", ephemeral=True)
             except:
                 await interaction.followup.send("Произошла ошибка при отзыве решения. Попробуйте еще раз.", ephemeral=True)
+
+    async def cancel_revoke_decision(self, interaction: Interaction):
+        """Отменяет отзыв (удаляет сообщение) - только для отклоненных пользователей"""
+        try:
+            # Удаляем сообщение верификации
+            await interaction.message.delete()
+            logger.info(f"Удалено сообщение верификации для пользователя {self.member.id} по запросу отмены отзыва")
+            
+            try:
+                await interaction.response.send_message("Сообщение верификации удалено.", ephemeral=True)
+            except:
+                # Если сообщение уже удалено, interaction может не сработать
+                pass
+                
+        except Exception as e:
+            logger.error(f"Ошибка в методе cancel_revoke_decision: {e}")
+            try:
+                await interaction.response.send_message("Произошла ошибка при удалении сообщения.", ephemeral=True)
+            except:
+                await interaction.followup.send("Произошла ошибка при удалении сообщения.", ephemeral=True)
 
 
     async def create_stamped_passport(self, member, accepted: bool):
