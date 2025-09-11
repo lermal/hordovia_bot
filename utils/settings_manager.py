@@ -1,12 +1,13 @@
 import json
 import os
-from typing import Dict, Any
+from typing import Dict, Any, Callable, List
 import logging
 
 class SettingsManager:
     def __init__(self):
         self.settings_file = "data/settings.json"
         self.settings: Dict[str, Any] = {}
+        self._callbacks: Dict[str, List[Callable]] = {}  # Callbacks для уведомления об изменениях
         self._load_settings()
 
     def _load_settings(self):
@@ -68,6 +69,7 @@ class SettingsManager:
             self.settings[category] = {}
         self.settings[category][key] = value
         self._save_settings()
+        self._notify_callbacks(category)
 
     def get_all_settings(self) -> Dict[str, Any]:
         """Возвращает все настройки"""
@@ -76,4 +78,26 @@ class SettingsManager:
     def update_settings(self, category: str, settings: Dict[str, Any]):
         """Обновляет все настройки категории"""
         self.settings[category] = settings
-        self._save_settings() 
+        self._save_settings()
+        self._notify_callbacks(category)
+    
+    def subscribe_to_category(self, category: str, callback: Callable[[Dict[str, Any]], None]):
+        """Подписывается на изменения настроек в категории"""
+        if category not in self._callbacks:
+            self._callbacks[category] = []
+        self._callbacks[category].append(callback)
+    
+    def unsubscribe_from_category(self, category: str, callback: Callable[[Dict[str, Any]], None]):
+        """Отписывается от изменений настроек в категории"""
+        if category in self._callbacks and callback in self._callbacks[category]:
+            self._callbacks[category].remove(callback)
+    
+    def _notify_callbacks(self, category: str):
+        """Уведомляет всех подписчиков об изменении настроек в категории"""
+        if category in self._callbacks:
+            category_settings = self.settings.get(category, {})
+            for callback in self._callbacks[category]:
+                try:
+                    callback(category_settings)
+                except Exception as e:
+                    logging.error(f"Ошибка в callback для категории {category}: {e}") 

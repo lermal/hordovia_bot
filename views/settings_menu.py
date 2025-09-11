@@ -115,8 +115,22 @@ class EditSettingModal(Modal):
                 import json
                 return json.loads(value)
             except (json.JSONDecodeError, ValueError):
-                # Если не получилось, возвращаем как список с одним элементом
-                return [value] if value else []
+                # Если не получилось как JSON, пробуем разделить по запятым
+                if "," in value:
+                    # Разделяем по запятым и очищаем от пробелов
+                    items = [item.strip() for item in value.split(",") if item.strip()]
+                    # Для admin_role_ids преобразуем в числа
+                    if setting_key == "admin_role_ids":
+                        try:
+                            return [int(item) for item in items if item.isdigit()]
+                        except ValueError:
+                            return items
+                    return items
+                else:
+                    # Если нет запятых, возвращаем как список с одним элементом
+                    if setting_key == "admin_role_ids" and value.isdigit():
+                        return [int(value)]
+                    return [value] if value else []
         
         elif setting_key in boolean_settings:
             value_lower = value.lower()
