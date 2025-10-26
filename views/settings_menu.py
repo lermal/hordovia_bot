@@ -90,7 +90,7 @@ class EditSettingModal(Modal):
         numeric_settings = {
             "notification_channel", "check_interval", "audio_quality", 
             "default_user_limit", "welcome_channel_id", "verification_channel_id", 
-            "member_role_id", "category_id", "create_channel_id"
+            "member_role_id", "rejected_role_id", "category_id", "create_channel_id"
         }
         
         # Настройки, которые должны быть списками

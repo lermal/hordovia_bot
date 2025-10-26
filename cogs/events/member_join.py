@@ -484,7 +484,7 @@ class VerificationView(View):
             # Обновляем сообщение
             embed = Embed(
                 title="Участник отклонен",
-                description=f"Пользователь {getattr(self.member, 'mention', 'Пользователь')} был отклонен и становится <@&{self.rejected_role_id}>.",
+                description=f"Пользователь {getattr(self.member, 'mention', 'Пользователь')} был отклонен и становится <@&{current_rejected_role_id}>.",
                 color=Color.red()
             )
             if getattr(self.member, "id", None):
@@ -514,7 +514,7 @@ class VerificationView(View):
                     passport_message = await welcome_channel.fetch_message(self.passport_message_id)
                     welcome_embed = Embed(
                         title="Welcome to Hordovia!",
-                        description=f"Пользователь {getattr(self.member, 'mention', 'Пользователь')} был отклонен дежурным {interaction.user.mention} и становится <@&{self.rejected_role_id}>.\nСлава Хордовии! Спасибо за борщ!",
+                        description=f"Пользователь {getattr(self.member, 'mention', 'Пользователь')} был отклонен дежурным {interaction.user.mention} и становится <@&{current_rejected_role_id}>.\nСлава Хордовии! Спасибо за борщ!",
                         color=Color.red()
                     )
                     welcome_embed.set_image(url="attachment://passport.png")
@@ -537,12 +537,18 @@ class VerificationView(View):
 
             # Попытка добавить роль ИНС пользователю
             try:
-                if self.member and self.rejected_role_id:
-                    role = interaction.guild.get_role(self.rejected_role_id)
+                current_settings = self.settings_manager.get_all_settings().get("verification", {})
+                current_rejected_role_id = current_settings.get("rejected_role_id", 0)
+                
+                if self.member and current_rejected_role_id:
+                    role = interaction.guild.get_role(current_rejected_role_id)
                     if role:
                         await self.member.add_roles(role, reason="Роль ИНС добавлена при отклонении заявки")
+                        logger.info(f"Роль ИНС {role.name} успешно добавлена пользователю {self.member.id}")
                     else:
-                        logger.warning(f"Роль ИНС с ID {self.rejected_role_id} не найдена")
+                        logger.warning(f"Роль ИНС с ID {current_rejected_role_id} не найдена")
+                else:
+                    logger.warning(f"Не удается добавить роль ИНС: member={self.member is not None}, rejected_role_id={current_rejected_role_id}")
             except Exception as e:
                 logger.error(f"Ошибка при добавлении роли rejected_role пользователю {getattr(self.member, 'id', 'Unknown')}: {e}")
 
