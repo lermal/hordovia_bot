@@ -535,10 +535,12 @@ class VerificationView(View):
             except:
                 pass
             try:
-                if self.member and interaction.guild and self.rejected_role_id:
+                if self.member and self.rejected_role_id:
                     role = interaction.guild.get_role(self.rejected_role_id)
                     if role:
-                        await self.member.add_roles(role)
+                        await self.member.add_roles(role, reason="Роль ИНС добавлена при отклонении заявки")
+                    else:
+                        logger.warning(f"Роль ИНС с ID {self.rejected_role_id} не найдена")
             except Exception as e:
                 logger.error(f"Ошибка при добавлении роли rejected_role пользователю {getattr(self.member, 'id', 'Unknown')}: {e}")
 
