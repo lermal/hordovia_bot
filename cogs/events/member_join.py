@@ -479,7 +479,7 @@ class VerificationView(View):
             # Обновляем сообщение
             embed = Embed(
                 title="Участник отклонен",
-                description=f"Пользователь {self.member.mention} был отклонен и кикнут с сервера.",
+                description=f"Пользователь {self.member.mention} был отклонен и становится <@&{self.rejected_role_id}>.",
                 color=Color.red()
             )
             embed.add_field(name="ID", value=self.member.id)
@@ -921,6 +921,7 @@ class MemberJoinEvent(Cog):
             welcome_channel_id = settings.get("welcome_channel_id", 0)
             verification_channel_id = settings.get("verification_channel_id", 0)
             member_role_id = settings.get("member_role_id", 0)
+            rejected_role_id = settings.get("rejected_role_id", 0)
             
             # Проверяем, есть ли уже принятый паспорт (для возвращающихся пользователей)
             accepted_passport_path = os.path.join(PASSPORTS_DIR, f"{member.id}_accept.png")
