@@ -69,15 +69,13 @@ class VerificationView(View):
         self.bot = bot
         self.member = member
         self.settings_manager = SettingsManager()
-        self.member_join_event = member_join_event  # Ссылка на MemberJoinEvent для доступа к кэшу
+        self.member_join_event = member_join_event  # Ссылка на MemberJoinEvent для совместимости
         
-        # Получаем настройки верификации из кэша если доступен, иначе напрямую
-        if self.member_join_event:
-            settings = self.member_join_event.get_cached_verification_settings()
-        else:
-            settings = self.settings_manager.get_all_settings().get("verification", {})
+        # Получаем настройки верификации напрямую
+        settings = self.settings_manager.get_all_settings().get("verification", {})
         
         self.member_role_id = settings.get("member_role_id", 0)
+        self.rejected_role_id = settings.get("rejected_role_id", 0)
         
         self.passport_message_id = passport_message_id  # ID сообщения с паспортом в канале "Добро пожаловать"
         self.is_revoke_state = False
@@ -191,10 +189,7 @@ class VerificationView(View):
     async def find_passport_message_by_member_id(self, member_id: int):
         """Ищет сообщение с паспортом для указанного member_id в welcome канале."""
         try:
-            if self.member_join_event:
-                settings = self.member_join_event.get_cached_verification_settings()
-            else:
-                settings = self.settings_manager.get_all_settings().get("verification", {})
+            settings = self.settings_manager.get_all_settings().get("verification", {})
             
             welcome_channel_id = settings.get("welcome_channel_id", 0)
             welcome_channel = self.bot.get_channel(welcome_channel_id)
@@ -221,7 +216,7 @@ class VerificationView(View):
     async def interaction_check(self, interaction: Interaction) -> bool:
         # Получаем настройки из кэша если доступен, иначе напрямую
         if self.member_join_event:
-            settings = self.member_join_event.get_cached_verification_settings()
+            settings = self.settings_manager.get_all_settings().get("verification", {})
         else:
             settings = self.settings_manager.get_all_settings().get("verification", {})
         
@@ -404,7 +399,7 @@ class VerificationView(View):
                 
                 # Обновляем сообщение с паспортом в канале приветствия
                 if self.member_join_event:
-                    settings = self.member_join_event.get_cached_verification_settings()
+                    settings = self.settings_manager.get_all_settings().get("verification", {})
                 else:
                     settings = self.settings_manager.get_all_settings().get("verification", {})
                 
@@ -494,10 +489,7 @@ class VerificationView(View):
                 logger.warning(f"Не удалось отправить финальное уведомление: {e}")
             
             # Обновляем сообщение с паспортом в канале приветствия
-            if self.member_join_event:
-                settings = self.member_join_event.get_cached_verification_settings()
-            else:
-                settings = self.settings_manager.get_all_settings().get("verification", {})
+            settings = self.settings_manager.get_all_settings().get("verification", {})
             
             welcome_channel_id = settings.get("welcome_channel_id", 0)
             welcome_channel = self.bot.get_channel(welcome_channel_id)
@@ -577,7 +569,7 @@ class VerificationView(View):
                 
                 # Удаляем старое сообщение и создаем новое с пустым паспортом
                 if self.member_join_event:
-                    settings = self.member_join_event.get_cached_verification_settings()
+                    settings = self.settings_manager.get_all_settings().get("verification", {})
                 else:
                     settings = self.settings_manager.get_all_settings().get("verification", {})
                 
@@ -852,12 +844,6 @@ class MemberJoinEvent(Cog):
         self.bot = bot
         self.settings_manager = SettingsManager()
         
-        # Кэшируем настройки верификации
-        self._cached_verification_settings = self.settings_manager.get_all_settings().get("verification", {})
-        
-        # Подписываемся на изменения настроек верификации
-        self.settings_manager.subscribe_to_category("verification", self._update_verification_cache)
-        
         # Создаем директорию для паспортов, если её нет
         if not os.path.exists(PASSPORTS_DIR):
             os.makedirs(PASSPORTS_DIR)
@@ -865,19 +851,11 @@ class MemberJoinEvent(Cog):
         # Словарь для отслеживания обрабатываемых пользователей (предотвращает дублирование)
         self.processing_users = set()
     
-    def _update_verification_cache(self, new_settings: Dict[str, Any]):
-        """Обновляет кэш настроек верификации"""
-        self._cached_verification_settings = new_settings
-        logger.info("Кэш настроек верификации обновлен")
-    
-    def get_cached_verification_settings(self) -> Dict[str, Any]:
-        """Возвращает кэшированные настройки верификации"""
-        return self._cached_verification_settings
     
     async def register_persistent_views(self):
         """Регистрирует персистентные View для верификации после загрузки кога"""
         try:
-            settings = self.get_cached_verification_settings()
+            settings = self.settings_manager.get_all_settings().get("verification", {})
             verification_channel_id = settings.get("verification_channel_id", 0)
             
             if verification_channel_id:
@@ -914,8 +892,8 @@ class MemberJoinEvent(Cog):
             # Добавляем пользователя в обработку
             self.processing_users.add(member.id)
             
-            # Получаем кэшированные настройки верификации
-            settings = self.get_cached_verification_settings()
+            # Получаем настройки верификации
+            settings = self.settings_manager.get_all_settings().get("verification", {})
             admin_role_ids = normalize_admin_role_ids(settings.get("admin_role_ids", []))
             
             welcome_channel_id = settings.get("welcome_channel_id", 0)
