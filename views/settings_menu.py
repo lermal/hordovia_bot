@@ -472,6 +472,12 @@ class VerificationSettingsView(View):
                     emoji="👤"
                 ),
                 SelectOption(
+                    label="ID роли при отмене",
+                    value="rejected_role_id",
+                    description="ID роли, которая выдается при отклонении верификации",
+                    emoji="❌"
+                ),
+                SelectOption(
                     label="ID ролей администраторов",
                     value="admin_role_ids",
                     description="ID ролей администраторов через запятую",

@@ -55,6 +55,7 @@ class SettingsManager:
                 "welcome_channel_id": 0,
                 "verification_channel_id": 0,
                 "member_role_id": 0,
+                "rejected_role_id": 0,
                 "admin_role_ids": []
             }
         }

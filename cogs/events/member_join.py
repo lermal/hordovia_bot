@@ -489,7 +489,7 @@ class VerificationView(View):
             
             # Отправляем финальное уведомление
             try:
-                await interaction.followup.send(f"Участник {self.member.mention} отклонен и кикнут.", ephemeral=True)
+                await interaction.followup.send(f"Участник {self.member.mention} отклонен и получил роль ИНС.", ephemeral=True)
             except Exception as e:
                 logger.warning(f"Не удалось отправить финальное уведомление: {e}")
             
@@ -508,7 +508,7 @@ class VerificationView(View):
                     passport_message = await welcome_channel.fetch_message(self.passport_message_id)
                     welcome_embed = Embed(
                         title="Welcome to Hordovia!",
-                        description=f"Пользователь {self.member.mention} был отклонен дежурным {interaction.user.mention}.\nСлава Хордовии! Спасибо за борщ!",
+                        description=f"Пользователь {self.member.mention} был отклонен дежурным {interaction.user.mention} и становится <@&{self.rejected_role_id}>.\nСлава Хордовии! Спасибо за борщ!",
                         color=Color.red()
                     )
                     welcome_embed.set_image(url="attachment://passport.png")
@@ -525,7 +525,7 @@ class VerificationView(View):
                 await self.member.send("Ваша заявка на вступление была отклонена.")
             except:
                 pass
-            await self.member.kick(reason="Отклонен администрацией")
+            await self.member.add_roles(interaction.guild.get_role(self.rejected_role_id))
         except Exception as e:
             logger.error(f"Ошибка в методе reject: {e}")
             try:
