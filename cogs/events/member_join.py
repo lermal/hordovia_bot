@@ -534,6 +534,8 @@ class VerificationView(View):
                     await self.member.send("Ваша заявка на вступление была отклонена.")
             except:
                 pass
+
+            # Попытка добавить роль ИНС пользователю
             try:
                 if self.member and self.rejected_role_id:
                     role = interaction.guild.get_role(self.rejected_role_id)
