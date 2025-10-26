@@ -443,6 +443,10 @@ class VerificationView(View):
 
             logger.info(f"Начинаем отклонение пользователя {getattr(self.member, 'id', 'Unknown')}, passport_message_id: {self.passport_message_id}")
 
+            # Перезагружаем настройки для получения актуального rejected_role_id
+            current_settings = self.settings_manager.get_all_settings().get("verification", {})
+            current_rejected_role_id = current_settings.get("rejected_role_id", 0)
+
             # Отключаем кнопки во время обработки
             for item in self.children:
                 if hasattr(item, 'disabled'):
@@ -537,9 +541,6 @@ class VerificationView(View):
 
             # Попытка добавить роль ИНС пользователю
             try:
-                current_settings = self.settings_manager.get_all_settings().get("verification", {})
-                current_rejected_role_id = current_settings.get("rejected_role_id", 0)
-                
                 if self.member and current_rejected_role_id:
                     role = interaction.guild.get_role(current_rejected_role_id)
                     if role:
