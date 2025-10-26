@@ -432,22 +432,32 @@ class VerificationView(View):
 
     async def reject(self, interaction: Interaction):
         try:
-            logger.info(f"Начинаем отклонение пользователя {self.member.id}, passport_message_id: {self.passport_message_id}")
-            
+            # Проверка наличия self.member
+            if self.member is None:
+                logger.error("Ошибка в методе reject: self.member is None")
+                try:
+                    await interaction.followup.send("Внутренняя ошибка: пользователь не найден. Попробуйте еще раз.", ephemeral=True)
+                except Exception as ex:
+                    logger.warning(f"Не удалось отправить сообщение об ошибке: {ex}")
+                return
+
+            logger.info(f"Начинаем отклонение пользователя {getattr(self.member, 'id', 'Unknown')}, passport_message_id: {self.passport_message_id}")
+
             # Отключаем кнопки во время обработки
             for item in self.children:
                 if hasattr(item, 'disabled'):
                     item.disabled = True
-            
+
             # Обновляем сообщение с отключенными кнопками
             await interaction.message.edit(view=self)
-            
+
             # Сразу отправляем ответ, чтобы не было таймаута
             try:
-                await interaction.response.send_message(f"Обрабатываем отклонение участника {self.member.mention}...", ephemeral=True)
+                mention = getattr(self.member, "mention", "Пользователь")
+                await interaction.response.send_message(f"Обрабатываем отклонение участника {mention}...", ephemeral=True)
             except Exception as e:
                 logger.warning(f"Не удалось отправить первичный ответ: {e}")
-            
+
             if self.is_revoke_state:
                 # Отзываем решение
                 await self.revoke_decision(interaction)
@@ -457,8 +467,8 @@ class VerificationView(View):
             try:
                 passport_path = await self.create_stamped_passport(self.member, False)
                 # Удаляем пустой паспорт
-                empty_passport = os.path.join(PASSPORTS_DIR, f"{self.member.id}_empty.png")
-                if os.path.exists(empty_passport):
+                empty_passport = os.path.join(PASSPORTS_DIR, f"{self.member.id}_empty.png") if getattr(self.member, "id", None) else None
+                if empty_passport and os.path.exists(empty_passport):
                     os.remove(empty_passport)
             except Exception as e:
                 logger.error(f"Ошибка при создании паспорта: {e}")
@@ -467,57 +477,71 @@ class VerificationView(View):
                 except:
                     pass
                 return
-            
+
             # Меняем кнопки на "Отозвать решение"
             self.setup_revoke_button()
-            
+
             # Обновляем сообщение
             embed = Embed(
                 title="Участник отклонен",
-                description=f"Пользователь {self.member.mention} был отклонен и становится <@&{self.rejected_role_id}>.",
+                description=f"Пользователь {getattr(self.member, 'mention', 'Пользователь')} был отклонен и становится <@&{self.rejected_role_id}>.",
                 color=Color.red()
             )
-            embed.add_field(name="ID", value=self.member.id)
-            embed.add_field(name="Аккаунт создан", value=self.member.created_at.strftime("%d.%m.%Y"))
-            
+            if getattr(self.member, "id", None):
+                embed.add_field(name="ID", value=self.member.id)
+            if getattr(self.member, "created_at", None):
+                embed.add_field(name="Аккаунт создан", value=self.member.created_at.strftime("%d.%m.%Y"))
+
             await interaction.message.edit(embed=embed, view=self)
-            
+
             # Отправляем финальное уведомление
             try:
-                await interaction.followup.send(f"Участник {self.member.mention} отклонен и получил роль ИНС.", ephemeral=True)
+                await interaction.followup.send(f"Участник {getattr(self.member, 'mention', 'Пользователь')} отклонен и получил роль ИНС.", ephemeral=True)
             except Exception as e:
                 logger.warning(f"Не удалось отправить финальное уведомление: {e}")
-            
+
             # Обновляем сообщение с паспортом в канале приветствия
             settings = self.settings_manager.get_all_settings().get("verification", {})
-            
+
             welcome_channel_id = settings.get("welcome_channel_id", 0)
             welcome_channel = self.bot.get_channel(welcome_channel_id)
-            
+
             if welcome_channel and self.passport_message_id:
                 try:
-                    logger.info(f"Обновляем сообщение с паспортом для {self.member.id}, message_id: {self.passport_message_id}")
+                    logger.info(
+                        f"Обновляем сообщение с паспортом для {getattr(self.member, 'id', 'Unknown')}, message_id: {self.passport_message_id}"
+                    )
                     passport_message = await welcome_channel.fetch_message(self.passport_message_id)
                     welcome_embed = Embed(
                         title="Welcome to Hordovia!",
-                        description=f"Пользователь {self.member.mention} был отклонен дежурным {interaction.user.mention} и становится <@&{self.rejected_role_id}>.\nСлава Хордовии! Спасибо за борщ!",
+                        description=f"Пользователь {getattr(self.member, 'mention', 'Пользователь')} был отклонен дежурным {interaction.user.mention} и становится <@&{self.rejected_role_id}>.\nСлава Хордовии! Спасибо за борщ!",
                         color=Color.red()
                     )
                     welcome_embed.set_image(url="attachment://passport.png")
                     await passport_message.edit(embed=welcome_embed, file=File(passport_path, filename="passport.png"))
-                    logger.info(f"Сообщение с паспортом успешно обновлено для {self.member.id}")
+                    logger.info(f"Сообщение с паспортом успешно обновлено для {getattr(self.member, 'id', 'Unknown')}")
                 except Exception as e:
-                    logger.error(f"Ошибка при обновлении сообщения с паспортом для {self.member.id}: {e}")
+                    logger.error(f"Ошибка при обновлении сообщения с паспортом для {getattr(self.member, 'id', 'Unknown')}: {e}")
                     logger.error(f"Channel ID: {welcome_channel_id}, Message ID: {self.passport_message_id}")
             else:
-                logger.warning(f"Не удалось найти канал или ID сообщения для обновления паспорта. Channel: {welcome_channel}, Message ID: {self.passport_message_id}")
-            
+                logger.warning(
+                    f"Не удалось найти канал или ID сообщения для обновления паспорта. Channel: {welcome_channel}, Message ID: {self.passport_message_id}"
+                )
+
             # Отправляем сообщение пользователю и кикаем его
             try:
-                await self.member.send("Ваша заявка на вступление была отклонена.")
+                if self.member:
+                    await self.member.send("Ваша заявка на вступление была отклонена.")
             except:
                 pass
-            await self.member.add_roles(interaction.guild.get_role(self.rejected_role_id))
+            try:
+                if self.member and interaction.guild and self.rejected_role_id:
+                    role = interaction.guild.get_role(self.rejected_role_id)
+                    if role:
+                        await self.member.add_roles(role)
+            except Exception as e:
+                logger.error(f"Ошибка при добавлении роли rejected_role пользователю {getattr(self.member, 'id', 'Unknown')}: {e}")
+
         except Exception as e:
             logger.error(f"Ошибка в методе reject: {e}")
             try:
