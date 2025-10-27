@@ -10,7 +10,7 @@ class OnReady(Cog):
         await self.bot.change_presence(
             activity=Activity(
                 type=ActivityType.playing,
-                name="/setup для настройки"
+                name="хордовию"
             )
         )
         
