@@ -23,7 +23,7 @@ def safe_int(value, default=0):
         return default
 
 # Your testing guild IDs
-GUILD_IDS = [889556917901463602]
+GUILD_IDS = [889556917901463602, 889556917901463602]
 
 # The directory where your cogs are located
 COGS_DIR = "cogs"
