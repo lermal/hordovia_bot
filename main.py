@@ -21,7 +21,11 @@ def main():
     
     logger = setup_logger()
     
-    bot = Bot(intents=nextcord.Intents.all())
+    # Создаем интенты с явным указанием привилегированных
+    intents = nextcord.Intents.default()
+    intents.members = True  # Привилегированный интент для работы с участниками (on_member_join, get_member)
+    
+    bot = Bot(intents=intents)
     bot.logger = logger
     
     load_dotenv()
