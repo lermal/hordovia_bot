@@ -4,7 +4,8 @@ from nextcord import (
     Color, 
     ui, 
     SelectOption,
-    TextInputStyle
+    TextInputStyle,
+    ButtonStyle
 )
 from nextcord.ui import Modal, View, Select
 from typing import Optional, Dict, Any
@@ -771,7 +772,7 @@ class ClearCategoriesButton(ui.Button):
     def __init__(self):
         super().__init__(
             label="Очистить все",
-            style=ui.ButtonStyle.danger,
+            style=ButtonStyle.danger,
             emoji="🗑️"
         )
     
@@ -797,7 +798,7 @@ class RefreshCategoriesButton(ui.Button):
     def __init__(self):
         super().__init__(
             label="Обновить",
-            style=ui.ButtonStyle.secondary,
+            style=ButtonStyle.secondary,
             emoji="🔄"
         )
     
