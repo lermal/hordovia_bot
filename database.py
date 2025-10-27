@@ -1,11 +1,18 @@
 import aiosqlite
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, Any
+import asyncio
+import time
+from functools import lru_cache
 
 class Database:
     def __init__(self):
         self.db_path = Path("./data/database.db")
         self.conn: Optional[aiosqlite.Connection] = None
+        self._guild_cache: Dict[int, Tuple[int, int]] = {}
+        self._cache_lock = asyncio.Lock()
+        self._last_cache_update = 0
+        self._cache_ttl = 300  # 5 минут
 
     async def connect(self) -> None:
         """Установка соединения с БД"""
@@ -30,11 +37,7 @@ class Database:
                 voiceid BIGINT,
                 perms BIGINT
             );
-            """
-        )
-        
-        await self.conn.execute(
-            """
+            
             CREATE TABLE IF NOT EXISTS role_reactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id INTEGER NOT NULL,
@@ -43,19 +46,42 @@ class Database:
                 emoji TEXT NOT NULL,
                 role_id INTEGER NOT NULL,
                 UNIQUE(message_id, emoji)
-            )
+            );
+            
+            -- Индексы для оптимизации поиска
+            CREATE INDEX IF NOT EXISTS idx_privates_voiceid ON privates(voiceid);
+            CREATE INDEX IF NOT EXISTS idx_privates_ownerid ON privates(ownerid);
+            CREATE INDEX IF NOT EXISTS idx_channels_guild_id ON channels(guild_id);
+            CREATE INDEX IF NOT EXISTS idx_role_reactions_message_id ON role_reactions(message_id);
+            CREATE INDEX IF NOT EXISTS idx_role_reactions_guild_id ON role_reactions(guild_id);
             """
         )
         
         await self.conn.commit()
 
     async def get_guild_channels(self, guild_id: int) -> Optional[Tuple[int, int]]:
+        """Получение данных каналов гильдии с кэшированием"""
+        # Проверяем кэш
+        async with self._cache_lock:
+            current_time = time.time()
+            if (current_time - self._last_cache_update < self._cache_ttl and 
+                guild_id in self._guild_cache):
+                return self._guild_cache[guild_id]
+        
         await self.connect()
         async with self.conn.execute(
             "SELECT channel_id, category_id FROM channels WHERE guild_id = ?",
             (guild_id,)
         ) as cursor:
-            return await cursor.fetchone()
+            result = await cursor.fetchone()
+            
+            # Обновляем кэш
+            async with self._cache_lock:
+                if result:
+                    self._guild_cache[guild_id] = result
+                self._last_cache_update = current_time
+            
+            return result
 
     async def update_channel(self, guild_id: int, channel_id: int, category_id: int) -> None:
         await self.connect()
@@ -82,6 +108,20 @@ class Database:
             data
         )
         await self.conn.commit()
+        
+        # Обновляем кэш
+        async with self._cache_lock:
+            self._guild_cache[data[0]] = (data[1], data[2])
+            self._last_cache_update = time.time()
+
+    async def invalidate_guild_cache(self, guild_id: int = None) -> None:
+        """Инвалидация кэша гильдии"""
+        async with self._cache_lock:
+            if guild_id:
+                self._guild_cache.pop(guild_id, None)
+            else:
+                self._guild_cache.clear()
+            self._last_cache_update = 0
 
     async def get_private_room(self, owner_id: int) -> Optional[Tuple]:
         """Получение данных приватной комнаты"""
@@ -237,3 +277,60 @@ class Database:
         await self.connect()
         async with self.conn.execute("SELECT * FROM privates") as cursor:
             return await cursor.fetchall()
+
+    # Оптимизированные методы для работы с транзакциями
+    async def batch_delete_private_rooms(self, voice_ids: list) -> None:
+        """Пакетное удаление приватных комнат"""
+        await self.connect()
+        if not voice_ids:
+            return
+        
+        placeholders = ','.join('?' * len(voice_ids))
+        await self.conn.execute(
+            f"DELETE FROM privates WHERE voiceid IN ({placeholders})",
+            voice_ids
+        )
+        await self.conn.commit()
+
+    async def batch_update_private_rooms(self, rooms_data: list) -> None:
+        """Пакетное обновление приватных комнат"""
+        await self.connect()
+        if not rooms_data:
+            return
+        
+        await self.conn.executemany(
+            "INSERT OR REPLACE INTO privates VALUES (?, ?, ?, ?, ?)",
+            rooms_data
+        )
+        await self.conn.commit()
+
+    async def get_private_rooms_by_owners(self, owner_ids: list) -> dict:
+        """Получение приватных комнат для нескольких владельцев"""
+        await self.connect()
+        if not owner_ids:
+            return {}
+        
+        placeholders = ','.join('?' * len(owner_ids))
+        async with self.conn.execute(
+            f"SELECT * FROM privates WHERE ownerid IN ({placeholders})",
+            owner_ids
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return {row[0]: row for row in rows}  # ownerid: room_data
+
+    async def cleanup_empty_rooms(self) -> list:
+        """Очистка пустых комнат - возвращает список ID комнат для удаления"""
+        await self.connect()
+        async with self.conn.execute("SELECT voiceid FROM privates") as cursor:
+            voice_ids = [row[0] async for row in cursor]
+        
+        rooms_to_delete = []
+        for voice_id in voice_ids:
+            channel = self.bot.get_channel(voice_id) if hasattr(self, 'bot') else None
+            if not channel or (isinstance(channel, nextcord.VoiceChannel) and len(channel.members) == 0):
+                rooms_to_delete.append(voice_id)
+        
+        if rooms_to_delete:
+            await self.batch_delete_private_rooms(rooms_to_delete)
+        
+        return rooms_to_delete

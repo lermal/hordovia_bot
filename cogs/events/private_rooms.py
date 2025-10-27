@@ -548,8 +548,12 @@ class PrivateRoomsCog(commands.Cog):
         self.guild_data = {}
         
         try:
+            # Оптимизированная очистка пустых комнат
             await self.db.connect()
             private_rooms = await self.db.get_all_private_rooms()
+            
+            rooms_to_delete = []
+            channels_to_delete = []
             
             for room in private_rooms:
                 if room:
@@ -557,33 +561,60 @@ class PrivateRoomsCog(commands.Cog):
                     channel = self.bot.get_channel(voice_id)
                     
                     if not channel or (isinstance(channel, nextcord.VoiceChannel) and len(channel.members) == 0):
-                        await self.db.delete_private_room(voice_id)
-                        
+                        rooms_to_delete.append(voice_id)
                         if channel:
-                            try:
-                                await channel.delete()
-                                logger.info(f"Удалена пустая комната: {voice_name} (ID: {voice_id})")
-                            except Exception as del_err:
-                                logger.error(f"Не удалось удалить канал {voice_name}: {del_err}")
-                        else:
-                            logger.info(f"[CLEANUP] Удалена запись о несуществующей комнате: {voice_name} (ID: {voice_id})")
+                            channels_to_delete.append(channel)
+                        logger.info(f"[CLEANUP] Помечена к удалению: {voice_name} (ID: {voice_id})")
+            
+            # Пакетное удаление из БД
+            if rooms_to_delete:
+                await self.db.batch_delete_private_rooms(rooms_to_delete)
+                logger.info(f"Удалено {len(rooms_to_delete)} записей из БД")
+            
+            # Пакетное удаление каналов
+            for channel in channels_to_delete:
+                try:
+                    await channel.delete()
+                    logger.info(f"Удален канал: {channel.name}")
+                except Exception as del_err:
+                    logger.error(f"Не удалось удалить канал {channel.name}: {del_err}")
         
         except Exception as e:
             logger.error(f"Ошибка при очистке пустых каналов: {str(e)}")
             traceback.print_exc()
             
-        for guild_id in GUILD_IDS:
-            try:
-                data = await self.db.get_guild_channels(guild_id)
-                if data:
-                    self.guild_data[guild_id] = data
-                    logger.info(f"Загружены данные для гильдии {guild_id}: {data}")
+        # Оптимизированная загрузка данных гильдий
+        try:
+            guild_tasks = []
+            for guild_id in GUILD_IDS:
+                guild_tasks.append(self._load_guild_data(guild_id))
+            
+            # Загружаем данные параллельно
+            results = await asyncio.gather(*guild_tasks, return_exceptions=True)
+            
+            for i, result in enumerate(results):
+                guild_id = GUILD_IDS[i]
+                if isinstance(result, Exception):
+                    logger.error(f"Ошибка при инициализации данных для гильдии {guild_id}: {str(result)}")
+                elif result:
+                    self.guild_data[guild_id] = result
+                    logger.info(f"Загружены данные для гильдии {guild_id}: {result}")
                 else:
                     logger.info(f"Для гильдии {guild_id} выполните /setup")
-            except Exception as e:
-                logger.error(f"Ошибка при инициализации данных для гильдии {guild_id}: {str(e)}")
+                    
+        except Exception as e:
+            logger.error(f"Ошибка при параллельной загрузке данных гильдий: {str(e)}")
                 
         logger.info("Модуль приватных комнат готов!")
+
+    async def _load_guild_data(self, guild_id: int):
+        """Загрузка данных конкретной гильдии"""
+        try:
+            data = await self.db.get_guild_channels(guild_id)
+            return data
+        except Exception as e:
+            logger.error(f"Ошибка при загрузке данных гильдии {guild_id}: {str(e)}")
+            return None
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: nextcord.Member, before: nextcord.VoiceState, after: nextcord.VoiceState):
@@ -591,21 +622,27 @@ class PrivateRoomsCog(commands.Cog):
             if member.bot:
                 return
 
-            await self.db.connect()
             guild_id = member.guild.id
             
-            guild_data = await self.db.get_guild_channels(guild_id)
-            
+            # Используем кэшированные данные вместо запроса к БД
+            guild_data = self.guild_data.get(guild_id)
             if not guild_data:
-                logger.info(f"Данные не найдены для гильдии {guild_id}. Используйте /setup")
-                return
+                # Если нет в кэше, запрашиваем из БД
+                guild_data = await self.db.get_guild_channels(guild_id)
+                if guild_data:
+                    self.guild_data[guild_id] = guild_data
+                else:
+                    logger.info(f"Данные не найдены для гильдии {guild_id}. Используйте /setup")
+                    return
                 
             create_channel_id, category_id = guild_data
             
+            # Обрабатываем подключение к каналу создания
             if after.channel and after.channel.id == create_channel_id: 
                 logger.info(f"Пользователь {member.name} подключился к каналу создания")
                 await self.create_private_room(member, category_id)
 
+            # Обрабатываем выход из старой комнаты
             if before.channel and before.channel.id != create_channel_id: 
                 await self.cleanup_old_room(before.channel, create_channel_id)
                 
@@ -615,8 +652,7 @@ class PrivateRoomsCog(commands.Cog):
 
     async def create_private_room(self, member: nextcord.Member, category_id: int):
         try:
-            await self.db.connect()
-            
+            # Проверяем существующую комнату
             existing_room = await self.db.get_private_room(member.id)
             if existing_room:
                 voice_id = existing_room[3]
@@ -712,6 +748,10 @@ class PrivateRoomsCog(commands.Cog):
             if channel_id == create_chan_id:
                 return
 
+            # Быстрая проверка - если в канале есть участники, не делаем ничего
+            if len(channel.members) > 0:
+                return
+
             room_data = await self.db.get_private_room_by_channel(channel_id)
             if not room_data:
                 return
@@ -728,6 +768,7 @@ class PrivateRoomsCog(commands.Cog):
                 await self.db.delete_private_room(channel_id)
                 return
 
+            # Двойная проверка - если канал пустой, удаляем
             if len(channel.members) == 0:
                 await self.db.delete_private_room(channel_id)
                 try:
@@ -747,13 +788,19 @@ class PrivateRoomsCog(commands.Cog):
         try:
             if isinstance(deleted_channel, (nextcord.VoiceChannel, nextcord.CategoryChannel)):
                 guild_id = deleted_channel.guild.id
-                data = await self.db.get_guild_channels(guild_id)
+                
+                # Проверяем кэшированные данные
+                data = self.guild_data.get(guild_id)
+                if not data:
+                    data = await self.db.get_guild_channels(guild_id)
                 
                 if data and deleted_channel.id in data:
                     await self.db.delete_guild_channels(guild_id)
                     self.guild_data.pop(guild_id, None)
+                    await self.db.invalidate_guild_cache(guild_id)
                     logger.info(f"Автосброс настроек для гильдии {guild_id}")
                     
+                # Проверяем, является ли удаленный канал приватной комнатой
                 room_data = await self.db.get_private_room_by_channel(deleted_channel.id)
                 if room_data:
                     await self.db.delete_private_room(deleted_channel.id)
@@ -808,6 +855,7 @@ class SetupModal(nextcord.ui.Modal):
                 (guild.id, create_channel.id, category.id)
             )
             
+            # Обновляем кэш
             self.guild_data[guild.id] = (create_channel.id, category.id)
             
             await interaction.response.send_message(
