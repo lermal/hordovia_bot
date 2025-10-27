@@ -3,13 +3,12 @@ from nextcord.ext.commands import Cog
 from nextcord import slash_command
 from database import Database
 from config import GUILD_IDS
-from utils.settings_manager import SettingsManager
+from utils.settings_manager import settings_manager
 
 class SetupCommand(Cog):
     def __init__(self, bot):
         self.bot = bot
         self.db = Database()
-        self.settings_manager = SettingsManager()
 
     @slash_command(
         name="setup",
@@ -32,12 +31,12 @@ class SetupCommand(Cog):
                 # Сценарий 1: Каналы существуют и в БД, и на сервере
                 if existing_category and existing_channel:
                     # Проверяем, есть ли категория в разрешенных
-                    current_settings = self.settings_manager.get_all_settings().get("private_rooms", {})
+                    current_settings = settings_manager.get_all_settings().get("private_rooms", {})
                     allowed_categories = current_settings.get("allowed_categories", [])
                     
                     if existing_category.id not in allowed_categories:
                         allowed_categories.append(existing_category.id)
-                        self.settings_manager.set_setting("private_rooms", "allowed_categories", allowed_categories)
+                        settings_manager.set_setting("private_rooms", "allowed_categories", allowed_categories)
                         message = f"✅ Система уже настроена! Используйте канал: {existing_channel.mention}\n\n🔒 Категория **{existing_category.name}** добавлена в список разрешенных для удаления приватных комнат."
                     else:
                         message = f"✅ Система уже настроена! Используйте канал: {existing_channel.mention}"
@@ -55,12 +54,12 @@ class SetupCommand(Cog):
             await self.db.update_channel(interaction.guild.id, channel.id, category.id)
             
             # Добавляем созданную категорию в список разрешенных для удаления
-            current_settings = self.settings_manager.get_all_settings().get("private_rooms", {})
+            current_settings = settings_manager.get_all_settings().get("private_rooms", {})
             allowed_categories = current_settings.get("allowed_categories", [])
             
             if category.id not in allowed_categories:
                 allowed_categories.append(category.id)
-                self.settings_manager.set_setting("private_rooms", "allowed_categories", allowed_categories)
+                settings_manager.set_setting("private_rooms", "allowed_categories", allowed_categories)
             
             # Обновление кэша PrivateRoomsCog модуля
             private_rooms_cog = self.bot.get_cog("PrivateRoomsCog")

@@ -9,7 +9,7 @@ from nextcord.ext import commands
 from nextcord.ext.commands import Cog
 from bot import Bot
 from config import GUILD_IDS
-from utils.settings_manager import SettingsManager
+from utils.settings_manager import settings_manager
 from views.settings_menu import (
     SettingsCategoryView,
     MusicSettingsView,
@@ -27,7 +27,6 @@ logger = logging.getLogger(__name__)
 class SettingsCommand(Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.settings_manager = SettingsManager()
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -66,7 +65,7 @@ class SettingsCommand(Cog):
             # Определяем категорию по значению
             if selected_value in ["music", "twitch", "general", "private_rooms", "verification"]:
                 category = selected_value
-                current_settings = self.settings_manager.get_all_settings().get(category, {})
+                current_settings = settings_manager.get_all_settings().get(category, {})
                 
                 # Создаем embed с текущими настройками
                 embed = Embed(
@@ -111,7 +110,7 @@ class SettingsCommand(Cog):
                     category = custom_id
                 
                 setting_key = selected_value
-                current_settings = self.settings_manager.get_all_settings().get(category, {})
+                current_settings = settings_manager.get_all_settings().get(category, {})
                 current_value = format_setting_value(current_settings.get(setting_key, ""))
                 
                 modal = EditSettingModal(
@@ -165,10 +164,10 @@ class SettingsCommand(Cog):
             converted_value = temp_modal._convert_value_to_proper_type(setting_key, new_value)
             
             # Обновляем настройку
-            self.settings_manager.set_setting(category, setting_key, converted_value)
+            settings_manager.set_setting(category, setting_key, converted_value)
             
             await interaction.response.send_message(
-                f"✅ Настройка {setting_key} успешно обновлена!",
+                f"✅ Настройка **{setting_key}** успешно обновлена!\n",
                 ephemeral=True
             )
             

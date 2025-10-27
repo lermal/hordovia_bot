@@ -10,7 +10,7 @@ import os
 from datetime import datetime
 from typing import Dict, Any
 import random
-from utils.settings_manager import SettingsManager
+from utils.settings_manager import settings_manager
 import asyncio
 
 from logger import setup_logger
@@ -68,11 +68,10 @@ class VerificationView(View):
         super().__init__(timeout=None)  # Персистентный View
         self.bot = bot
         self.member = member
-        self.settings_manager = SettingsManager()
         self.member_join_event = member_join_event  # Ссылка на MemberJoinEvent для совместимости
         
         # Получаем настройки верификации напрямую
-        settings = self.settings_manager.get_all_settings().get("verification", {})
+        settings = settings_manager.get_all_settings().get("verification", {})
         
         self.member_role_id = settings.get("member_role_id", 0)
         self.rejected_role_id = settings.get("rejected_role_id", 0)
@@ -189,7 +188,7 @@ class VerificationView(View):
     async def find_passport_message_by_member_id(self, member_id: int):
         """Ищет сообщение с паспортом для указанного member_id в welcome канале."""
         try:
-            settings = self.settings_manager.get_all_settings().get("verification", {})
+            settings = settings_manager.get_all_settings().get("verification", {})
             
             welcome_channel_id = settings.get("welcome_channel_id", 0)
             welcome_channel = self.bot.get_channel(welcome_channel_id)
@@ -216,9 +215,9 @@ class VerificationView(View):
     async def interaction_check(self, interaction: Interaction) -> bool:
         # Получаем настройки из кэша если доступен, иначе напрямую
         if self.member_join_event:
-            settings = self.settings_manager.get_all_settings().get("verification", {})
+            settings = settings_manager.get_all_settings().get("verification", {})
         else:
-            settings = self.settings_manager.get_all_settings().get("verification", {})
+            settings = settings_manager.get_all_settings().get("verification", {})
         
         admin_role_ids = normalize_admin_role_ids(settings.get("admin_role_ids", []))
         
@@ -399,9 +398,9 @@ class VerificationView(View):
                 
                 # Обновляем сообщение с паспортом в канале приветствия
                 if self.member_join_event:
-                    settings = self.settings_manager.get_all_settings().get("verification", {})
+                    settings = settings_manager.get_all_settings().get("verification", {})
                 else:
-                    settings = self.settings_manager.get_all_settings().get("verification", {})
+                    settings = settings_manager.get_all_settings().get("verification", {})
                 
                 welcome_channel_id = settings.get("welcome_channel_id", 0)
                 welcome_channel = self.bot.get_channel(welcome_channel_id)
@@ -444,7 +443,7 @@ class VerificationView(View):
             logger.info(f"Начинаем отклонение пользователя {getattr(self.member, 'id', 'Unknown')}, passport_message_id: {self.passport_message_id}")
 
             # Перезагружаем настройки для получения актуального rejected_role_id
-            current_settings = self.settings_manager.get_all_settings().get("verification", {})
+            current_settings = settings_manager.get_all_settings().get("verification", {})
             current_rejected_role_id = current_settings.get("rejected_role_id", 0)
 
             # Отключаем кнопки во время обработки
@@ -505,7 +504,7 @@ class VerificationView(View):
                 logger.warning(f"Не удалось отправить финальное уведомление: {e}")
 
             # Обновляем сообщение с паспортом в канале приветствия
-            settings = self.settings_manager.get_all_settings().get("verification", {})
+            settings = settings_manager.get_all_settings().get("verification", {})
 
             welcome_channel_id = settings.get("welcome_channel_id", 0)
             welcome_channel = self.bot.get_channel(welcome_channel_id)
@@ -604,9 +603,9 @@ class VerificationView(View):
                 
                 # Удаляем старое сообщение и создаем новое с пустым паспортом
                 if self.member_join_event:
-                    settings = self.settings_manager.get_all_settings().get("verification", {})
+                    settings = settings_manager.get_all_settings().get("verification", {})
                 else:
-                    settings = self.settings_manager.get_all_settings().get("verification", {})
+                    settings = settings_manager.get_all_settings().get("verification", {})
                 
                 welcome_channel_id = settings.get("welcome_channel_id", 0)
                 welcome_channel = self.bot.get_channel(welcome_channel_id)
@@ -877,7 +876,6 @@ class VerificationView(View):
 class MemberJoinEvent(Cog):
     def __init__(self, bot: Bot):
         self.bot = bot
-        self.settings_manager = SettingsManager()
         
         # Создаем директорию для паспортов, если её нет
         if not os.path.exists(PASSPORTS_DIR):
@@ -890,7 +888,7 @@ class MemberJoinEvent(Cog):
     async def register_persistent_views(self):
         """Регистрирует персистентные View для верификации после загрузки кога"""
         try:
-            settings = self.settings_manager.get_all_settings().get("verification", {})
+            settings = settings_manager.get_all_settings().get("verification", {})
             verification_channel_id = settings.get("verification_channel_id", 0)
             
             if verification_channel_id:
@@ -928,7 +926,7 @@ class MemberJoinEvent(Cog):
             self.processing_users.add(member.id)
             
             # Получаем настройки верификации
-            settings = self.settings_manager.get_all_settings().get("verification", {})
+            settings = settings_manager.get_all_settings().get("verification", {})
             admin_role_ids = normalize_admin_role_ids(settings.get("admin_role_ids", []))
             
             welcome_channel_id = settings.get("welcome_channel_id", 0)

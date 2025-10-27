@@ -102,4 +102,12 @@ class SettingsManager:
                 try:
                     callback(category_settings)
                 except Exception as e:
-                    logging.error(f"Ошибка в callback для категории {category}: {e}") 
+                    logging.error(f"Ошибка в callback для категории {category}: {e}")
+    
+    def reload_settings(self):
+        """Перезагружает настройки из файла"""
+        self._load_settings()
+        logging.info("Настройки перезагружены из файла")
+
+# Глобальный экземпляр SettingsManager для использования во всех когах
+settings_manager = SettingsManager() 

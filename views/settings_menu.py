@@ -11,7 +11,7 @@ from nextcord.ui import Modal, View, Select
 from typing import Optional, Dict, Any
 import logging
 from nextcord.ext import commands
-from utils.settings_manager import SettingsManager
+from utils.settings_manager import settings_manager
 from logger import setup_logger
 import nextcord
 
@@ -55,7 +55,7 @@ class EditSettingModal(Modal):
             converted_value = self._convert_value_to_proper_type(self.setting_key, new_value)
             
             # Обновляем настройку
-            settings_manager = SettingsManager()
+            settings_manager = settings_manager
             settings_manager.set_setting(self.category, self.setting_key, converted_value)
             
             # Если это настройки приватных каналов, применяем изменения
@@ -73,7 +73,7 @@ class EditSettingModal(Modal):
                         await create_channel.edit(name=new_value)
             
             await interaction.response.send_message(
-                f"✅ Настройка {self.setting_key} успешно обновлена!",
+                f"✅ Настройка **{self.setting_key}** успешно обновлена!\n",
                 ephemeral=True
             )
         except Exception as e:
@@ -203,7 +203,7 @@ class SettingsCategoryView(View):
     async def on_category_select(self, interaction: Interaction):
         try:
             category = self.category_select.values[0]
-            settings_manager = SettingsManager()
+            settings_manager = settings_manager
             current_settings = settings_manager.get_all_settings().get(category, {})
             
             # Создаем embed с текущими настройками
@@ -281,7 +281,7 @@ class MusicSettingsView(View):
     async def on_setting_select(self, interaction: Interaction):
         try:
             setting_key = self.settings_select.values[0]
-            settings_manager = SettingsManager()
+            settings_manager = settings_manager
             current_settings = settings_manager.get_all_settings().get("music", {})
             current_value = format_setting_value(current_settings.get(setting_key, ""))
             
@@ -329,7 +329,7 @@ class TwitchSettingsView(View):
     async def on_setting_select(self, interaction: Interaction):
         try:
             setting_key = self.settings_select.values[0]
-            settings_manager = SettingsManager()
+            settings_manager = settings_manager
             current_settings = settings_manager.get_all_settings().get("twitch", {})
             current_value = format_setting_value(current_settings.get(setting_key, ""))
             
@@ -377,7 +377,7 @@ class GeneralSettingsView(View):
     async def on_setting_select(self, interaction: Interaction):
         try:
             setting_key = self.settings_select.values[0]
-            settings_manager = SettingsManager()
+            settings_manager = settings_manager
             current_settings = settings_manager.get_all_settings().get("general", {})
             current_value = format_setting_value(current_settings.get(setting_key, ""))
             
@@ -443,7 +443,7 @@ class PrivateRoomsSettingsView(View):
     async def on_setting_select(self, interaction: Interaction):
         try:
             setting_key = self.settings_select.values[0]
-            settings_manager = SettingsManager()
+            settings_manager = settings_manager
             current_settings = settings_manager.get_all_settings().get("private_rooms", {})
             
             # Специальная обработка для allowed_categories
@@ -470,7 +470,7 @@ class PrivateRoomsSettingsView(View):
     async def show_categories_management(self, interaction: Interaction):
         """Показывает интерфейс управления разрешенными категориями"""
         try:
-            settings_manager = SettingsManager()
+            settings_manager = settings_manager
             current_settings = settings_manager.get_all_settings().get("private_rooms", {})
             allowed_categories = current_settings.get("allowed_categories", [])
             
@@ -556,7 +556,7 @@ class VerificationSettingsView(View):
     async def on_setting_select(self, interaction: Interaction):
         try:
             setting_key = self.settings_select.values[0]
-            settings_manager = SettingsManager()
+            settings_manager = settings_manager
             current_settings = settings_manager.get_all_settings().get("verification", {})
             current_value = format_setting_value(current_settings.get(setting_key, ""))
             
@@ -629,7 +629,7 @@ class CategorySelectDropdown(Select):
     async def show_remove_category_dropdown(self, interaction: Interaction):
         """Показывает выпадающий список категорий для удаления"""
         try:
-            settings_manager = SettingsManager()
+            settings_manager = settings_manager
             current_settings = settings_manager.get_all_settings().get("private_rooms", {})
             allowed_categories = current_settings.get("allowed_categories", [])
             
@@ -685,7 +685,7 @@ class RemoveCategorySelect(Select):
     async def callback(self, interaction: Interaction):
         try:
             category_id = int(self.values[0])
-            settings_manager = SettingsManager()
+            settings_manager = settings_manager
             current_settings = settings_manager.get_all_settings().get("private_rooms", {})
             allowed_categories = current_settings.get("allowed_categories", [])
             
@@ -737,7 +737,7 @@ class AddCategoryModal(Modal):
                 )
                 return
             
-            settings_manager = SettingsManager()
+            settings_manager = settings_manager
             current_settings = settings_manager.get_all_settings().get("private_rooms", {})
             allowed_categories = current_settings.get("allowed_categories", [])
             
@@ -778,7 +778,7 @@ class ClearCategoriesButton(ui.Button):
     
     async def callback(self, interaction: Interaction):
         try:
-            settings_manager = SettingsManager()
+            settings_manager = settings_manager
             settings_manager.set_setting("private_rooms", "allowed_categories", [])
             
             await interaction.response.send_message(
@@ -804,7 +804,7 @@ class RefreshCategoriesButton(ui.Button):
     
     async def callback(self, interaction: Interaction):
         try:
-            settings_manager = SettingsManager()
+            settings_manager = settings_manager
             current_settings = settings_manager.get_all_settings().get("private_rooms", {})
             allowed_categories = current_settings.get("allowed_categories", [])
             

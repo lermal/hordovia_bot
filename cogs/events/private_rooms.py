@@ -3,7 +3,7 @@ from logger import setup_logger
 from database import Database
 from nextcord.ui import View, Modal
 from config import GUILD_IDS
-from utils.settings_manager import SettingsManager
+from utils.settings_manager import settings_manager
 import traceback
 import nextcord
 import asyncio
@@ -551,7 +551,6 @@ class PrivateRoomsCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.db = Database()
-        self.settings_manager = SettingsManager()
         self.guild_data = {}
         self.lock = asyncio.Lock() 
 
@@ -561,7 +560,7 @@ class PrivateRoomsCog(commands.Cog):
     def is_category_allowed(self, category_id: int) -> bool:
         """Проверяет, разрешена ли категория для создания приватных комнат"""
         try:
-            settings = self.settings_manager.get_all_settings().get("private_rooms", {})
+            settings = settings_manager.get_all_settings().get("private_rooms", {})
             allowed_categories = settings.get("allowed_categories", [])
             
             # Если список пустой, разрешены все категории для создания (для обратной совместимости)
@@ -576,7 +575,7 @@ class PrivateRoomsCog(commands.Cog):
     def is_deletion_allowed(self, category_id: int) -> bool:
         """Проверяет, разрешено ли удаление приватных комнат в данной категории"""
         try:
-            settings = self.settings_manager.get_all_settings().get("private_rooms", {})
+            settings = settings_manager.get_all_settings().get("private_rooms", {})
             allowed_categories = settings.get("allowed_categories", [])
             
             # Если список пустой, удаление ЗАПРЕЩЕНО
@@ -695,7 +694,7 @@ class PrivateRoomsCog(commands.Cog):
                 return
 
             # Получаем настройки приватных комнат
-            settings = self.settings_manager.get_all_settings().get("private_rooms", {})
+            settings = settings_manager.get_all_settings().get("private_rooms", {})
             
             # Формируем название комнаты
             room_name = settings.get("room_name_template", "{user} - комната").format(
@@ -834,10 +833,9 @@ class SetupModal(nextcord.ui.Modal):
         self.bot = bot
         self.db = db
         self.guild_data = guild_data
-        self.settings_manager = SettingsManager()
         
         # Получаем настройки приватных комнат
-        settings = self.settings_manager.get_all_settings().get("private_rooms", {})
+        settings = settings_manager.get_all_settings().get("private_rooms", {})
         
         self.category_name = nextcord.ui.TextInput(
             label="Название категории",
@@ -876,12 +874,12 @@ class SetupModal(nextcord.ui.Modal):
             self.guild_data[guild.id] = (create_channel.id, category.id)
             
             # Добавляем созданную категорию в список разрешенных
-            settings = self.settings_manager.get_all_settings().get("private_rooms", {})
+            settings = settings_manager.get_all_settings().get("private_rooms", {})
             allowed_categories = settings.get("allowed_categories", [])
             
             if category.id not in allowed_categories:
                 allowed_categories.append(category.id)
-                self.settings_manager.set_setting("private_rooms", "allowed_categories", allowed_categories)
+                settings_manager.set_setting("private_rooms", "allowed_categories", allowed_categories)
             
             await interaction.response.send_message(
                 f"✅ Система приватных комнат настроена!\n"
