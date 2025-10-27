@@ -49,7 +49,8 @@ class SettingsManager:
                 "default_category_name": "Приватные комнаты",
                 "default_create_channel_name": "➕ Создать комнату",
                 "default_user_limit": 0,
-                "room_name_template": "{user} - комната"
+                "room_name_template": "{user} - комната",
+                "allowed_categories": []
             },
             "verification": {
                 "welcome_channel_id": 0,

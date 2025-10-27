@@ -84,6 +84,22 @@ class ConfirmButton(nextcord.ui.Button):
 
     async def callback(self, interaction: nextcord.Interaction):
         try:
+            # Проверяем, разрешена ли категория для удаления приватных комнат
+            if not self.channel.category_id or not self.channel.guild.get_channel(self.channel.category_id):
+                await interaction.response.send_message("❌ Не удалось определить категорию канала!", ephemeral=True)
+                return
+                
+            # Получаем экземпляр PrivateRoomsCog для проверки категории
+            private_rooms_cog = None
+            for cog in interaction.client.cogs.values():
+                if isinstance(cog, PrivateRoomsCog):
+                    private_rooms_cog = cog
+                    break
+                    
+            if private_rooms_cog and not private_rooms_cog.is_deletion_allowed(self.channel.category_id):
+                await interaction.response.send_message("❌ Удаление приватных комнат в этой категории запрещено администратором!", ephemeral=True)
+                return
+            
             await interaction.response.send_message("✅ Комната будет удалена!", ephemeral=True)
             
             await self.db.delete_private_room(self.channel.id)
@@ -542,6 +558,36 @@ class PrivateRoomsCog(commands.Cog):
     async def init_db(self):
         await self.db.connect()
 
+    def is_category_allowed(self, category_id: int) -> bool:
+        """Проверяет, разрешена ли категория для создания приватных комнат"""
+        try:
+            settings = self.settings_manager.get_all_settings().get("private_rooms", {})
+            allowed_categories = settings.get("allowed_categories", [])
+            
+            # Если список пустой, разрешены все категории для создания (для обратной совместимости)
+            if not allowed_categories:
+                return True
+                
+            return category_id in allowed_categories
+        except Exception as e:
+            logger.error(f"Ошибка при проверке разрешенных категорий: {str(e)}")
+            return True  # В случае ошибки разрешаем создание
+
+    def is_deletion_allowed(self, category_id: int) -> bool:
+        """Проверяет, разрешено ли удаление приватных комнат в данной категории"""
+        try:
+            settings = self.settings_manager.get_all_settings().get("private_rooms", {})
+            allowed_categories = settings.get("allowed_categories", [])
+            
+            # Если список пустой, удаление ЗАПРЕЩЕНО
+            if not allowed_categories:
+                return False
+                
+            return category_id in allowed_categories
+        except Exception as e:
+            logger.error(f"Ошибка при проверке разрешенных категорий для удаления: {str(e)}")
+            return False  # В случае ошибки запрещаем удаление
+
     @commands.Cog.listener()
     async def on_ready(self):
         await self.init_db()
@@ -639,6 +685,15 @@ class PrivateRoomsCog(commands.Cog):
             if not category or not isinstance(category, nextcord.CategoryChannel):
                 raise ValueError("Категория не найдена")
 
+            # Проверяем, разрешена ли категория для создания приватных комнат
+            if not self.is_category_allowed(category_id):
+                logger.warning(f"Попытка создания приватной комнаты в неразрешенной категории {category_id} пользователем {member.name}")
+                try:
+                    await member.send("❌ Создание приватных комнат в этой категории запрещено администратором.")
+                except:
+                    pass
+                return
+
             # Получаем настройки приватных комнат
             settings = self.settings_manager.get_all_settings().get("private_rooms", {})
             
@@ -729,6 +784,11 @@ class PrivateRoomsCog(commands.Cog):
                 return
 
             if len(channel.members) == 0:
+                # Проверяем, разрешено ли удаление приватных комнат в данной категории
+                if not self.is_deletion_allowed(channel.category_id):
+                    logger.warning(f"Удаление приватных комнат запрещено в категории {channel.category_id}")
+                    return
+                    
                 await self.db.delete_private_room(channel_id)
                 try:
                     await channel.delete()
@@ -756,6 +816,11 @@ class PrivateRoomsCog(commands.Cog):
                     
                 room_data = await self.db.get_private_room_by_channel(deleted_channel.id)
                 if room_data:
+                    # Проверяем, разрешено ли удаление приватных комнат в данной категории
+                    if not self.is_deletion_allowed(deleted_channel.category_id):
+                        logger.warning(f"Удаление приватных комнат запрещено в категории {deleted_channel.category_id}")
+                        return
+                        
                     await self.db.delete_private_room(deleted_channel.id)
                     logger.info(f"Удален приватный канал из БД: {deleted_channel.name}")
 
@@ -810,11 +875,20 @@ class SetupModal(nextcord.ui.Modal):
             
             self.guild_data[guild.id] = (create_channel.id, category.id)
             
+            # Добавляем созданную категорию в список разрешенных
+            settings = self.settings_manager.get_all_settings().get("private_rooms", {})
+            allowed_categories = settings.get("allowed_categories", [])
+            
+            if category.id not in allowed_categories:
+                allowed_categories.append(category.id)
+                self.settings_manager.set_setting("private_rooms", "allowed_categories", allowed_categories)
+            
             await interaction.response.send_message(
                 f"✅ Система приватных комнат настроена!\n"
-                f"Категория: **{category.name}**\n"
+                f"Категория: **{category.name}** (ID: {category.id})\n"
                 f"Канал создания: **{create_channel.name}**\n\n"
-                f"Чтобы создать приватную комнату, пользователь должен подключиться к каналу **{create_channel.name}**",
+                f"Чтобы создать приватную комнату, пользователь должен подключиться к каналу **{create_channel.name}**\n\n"
+                f"🔒 Категория автоматически добавлена в список разрешенных для создания приватных комнат.",
                 ephemeral=True
             )
         except nextcord.HTTPException as e:

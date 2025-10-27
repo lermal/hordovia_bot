@@ -12,6 +12,7 @@ import logging
 from nextcord.ext import commands
 from utils.settings_manager import SettingsManager
 from logger import setup_logger
+import nextcord
 
 logger = setup_logger()
 
@@ -94,7 +95,7 @@ class EditSettingModal(Modal):
         }
         
         # Настройки, которые должны быть списками
-        list_settings = {"admin_role_ids", "load_exceptions"}
+        list_settings = {"admin_role_ids", "load_exceptions", "allowed_categories"}
         
         # Настройки, которые должны быть булевыми значениями
         boolean_settings = {"enabled", "auto_reload"}
@@ -125,10 +126,18 @@ class EditSettingModal(Modal):
                             return [int(item) for item in items if item.isdigit()]
                         except ValueError:
                             return items
+                    # Для allowed_categories преобразуем в числа
+                    elif setting_key == "allowed_categories":
+                        try:
+                            return [int(item) for item in items if item.isdigit()]
+                        except ValueError:
+                            return items
                     return items
                 else:
                     # Если нет запятых, возвращаем как список с одним элементом
                     if setting_key == "admin_role_ids" and value.isdigit():
+                        return [int(value)]
+                    elif setting_key == "allowed_categories" and value.isdigit():
                         return [int(value)]
                     return [value] if value else []
         
@@ -416,6 +425,12 @@ class PrivateRoomsSettingsView(View):
                     value="room_name_template",
                     description="Шаблон названия комнаты",
                     emoji="🏷️"
+                ),
+                SelectOption(
+                    label="Разрешенные категории",
+                    value="allowed_categories",
+                    description="Управление категориями для удаления комнат",
+                    emoji="🔒"
                 )
             ],
             min_values=1,
@@ -429,6 +444,12 @@ class PrivateRoomsSettingsView(View):
             setting_key = self.settings_select.values[0]
             settings_manager = SettingsManager()
             current_settings = settings_manager.get_all_settings().get("private_rooms", {})
+            
+            # Специальная обработка для allowed_categories
+            if setting_key == "allowed_categories":
+                await self.show_categories_management(interaction)
+                return
+            
             current_value = format_setting_value(current_settings.get(setting_key, ""))
             
             modal = EditSettingModal(
@@ -442,6 +463,48 @@ class PrivateRoomsSettingsView(View):
             logger.error(f"Ошибка при обработке выбора настройки приватных комнат: {str(e)}")
             await interaction.response.send_message(
                 "❌ Произошла ошибка при обработке выбора",
+                ephemeral=True
+            )
+    
+    async def show_categories_management(self, interaction: Interaction):
+        """Показывает интерфейс управления разрешенными категориями"""
+        try:
+            settings_manager = SettingsManager()
+            current_settings = settings_manager.get_all_settings().get("private_rooms", {})
+            allowed_categories = current_settings.get("allowed_categories", [])
+            
+            embed = Embed(
+                title="🔒 Управление разрешенными категориями",
+                color=Color.blue()
+            )
+            
+            if not allowed_categories:
+                embed.description = "⚠️ **Нет разрешенных категорий для удаления!**\n"
+                                   "• Приватные комнаты можно создавать в любых категориях\n"
+                                   "• Удаление приватных комнат **ЗАПРЕЩЕНО** во всех категориях"
+            else:
+                category_list = []
+                for category_id in allowed_categories:
+                    category = interaction.guild.get_channel(category_id)
+                    if category:
+                        category_list.append(f"• **{category.name}** (ID: {category_id})")
+                    else:
+                        category_list.append(f"• *Неизвестная категория* (ID: {category_id})")
+                
+                embed.description = "\n".join(category_list)
+                embed.add_field(
+                    name="Всего категорий",
+                    value=str(len(allowed_categories)),
+                    inline=True
+                )
+            
+            view = CategoriesManagementView()
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Ошибка при показе управления категориями: {str(e)}")
+            await interaction.response.send_message(
+                "❌ Произошла ошибка при загрузке управления категориями",
                 ephemeral=True
             )
 
@@ -508,5 +571,274 @@ class VerificationSettingsView(View):
             logger.error(f"Ошибка при обработке выбора настройки верификации: {str(e)}")
             await interaction.response.send_message(
                 "❌ Произошла ошибка при обработке выбора",
+                ephemeral=True
+            )
+
+# View для управления разрешенными категориями
+class CategoriesManagementView(View):
+    def __init__(self):
+        super().__init__(timeout=180)
+        
+        self.add_item(CategorySelectDropdown())
+        self.add_item(ClearCategoriesButton())
+        self.add_item(RefreshCategoriesButton())
+
+class CategorySelectDropdown(Select):
+    def __init__(self):
+        super().__init__(
+            placeholder="Выберите действие с категорией",
+            options=[
+                SelectOption(
+                    label="Добавить категорию",
+                    value="add",
+                    description="Добавить категорию в разрешенные",
+                    emoji="➕"
+                ),
+                SelectOption(
+                    label="Удалить категорию",
+                    value="remove",
+                    description="Удалить категорию из разрешенных",
+                    emoji="➖"
+                )
+            ],
+            min_values=1,
+            max_values=1
+        )
+    
+    async def callback(self, interaction: Interaction):
+        try:
+            action = self.values[0]
+            
+            if action == "add":
+                await self.show_add_category_modal(interaction)
+            elif action == "remove":
+                await self.show_remove_category_dropdown(interaction)
+                
+        except Exception as e:
+            logger.error(f"Ошибка при обработке выбора действия: {str(e)}")
+            await interaction.response.send_message(
+                "❌ Произошла ошибка при обработке выбора",
+                ephemeral=True
+            )
+    
+    async def show_add_category_modal(self, interaction: Interaction):
+        """Показывает модальное окно для добавления категории"""
+        modal = AddCategoryModal()
+        await interaction.response.send_modal(modal)
+    
+    async def show_remove_category_dropdown(self, interaction: Interaction):
+        """Показывает выпадающий список категорий для удаления"""
+        try:
+            settings_manager = SettingsManager()
+            current_settings = settings_manager.get_all_settings().get("private_rooms", {})
+            allowed_categories = current_settings.get("allowed_categories", [])
+            
+            if not allowed_categories:
+                await interaction.response.send_message(
+                    "❌ Нет категорий для удаления!",
+                    ephemeral=True
+                )
+                return
+            
+            options = []
+            for category_id in allowed_categories:
+                category = interaction.guild.get_channel(category_id)
+                if category:
+                    options.append(SelectOption(
+                        label=category.name,
+                        value=str(category_id),
+                        description=f"ID: {category_id}",
+                        emoji="📁"
+                    ))
+            
+            if not options:
+                await interaction.response.send_message(
+                    "❌ Нет доступных категорий для удаления!",
+                    ephemeral=True
+                )
+                return
+            
+            view = View(timeout=180)
+            view.add_item(RemoveCategorySelect(options))
+            await interaction.response.send_message(
+                "Выберите категорию для удаления:",
+                view=view,
+                ephemeral=True
+            )
+            
+        except Exception as e:
+            logger.error(f"Ошибка при показе списка категорий для удаления: {str(e)}")
+            await interaction.response.send_message(
+                "❌ Произошла ошибка при загрузке списка категорий",
+                ephemeral=True
+            )
+
+class RemoveCategorySelect(Select):
+    def __init__(self, options):
+        super().__init__(
+            placeholder="Выберите категорию для удаления",
+            options=options,
+            min_values=1,
+            max_values=1
+        )
+    
+    async def callback(self, interaction: Interaction):
+        try:
+            category_id = int(self.values[0])
+            settings_manager = SettingsManager()
+            current_settings = settings_manager.get_all_settings().get("private_rooms", {})
+            allowed_categories = current_settings.get("allowed_categories", [])
+            
+            if category_id in allowed_categories:
+                allowed_categories.remove(category_id)
+                settings_manager.set_setting("private_rooms", "allowed_categories", allowed_categories)
+                
+                category = interaction.guild.get_channel(category_id)
+                category_name = category.name if category else f"ID: {category_id}"
+                
+                await interaction.response.send_message(
+                    f"✅ Категория **{category_name}** удалена из списка разрешенных!",
+                    ephemeral=True
+                )
+            else:
+                await interaction.response.send_message(
+                    "❌ Эта категория не находится в списке разрешенных!",
+                    ephemeral=True
+                )
+                
+        except Exception as e:
+            logger.error(f"Ошибка при удалении категории: {str(e)}")
+            await interaction.response.send_message(
+                "❌ Произошла ошибка при удалении категории",
+                ephemeral=True
+            )
+
+class AddCategoryModal(Modal):
+    def __init__(self):
+        super().__init__(title="Добавить категорию")
+        
+        self.category_input = ui.TextInput(
+            label="ID категории",
+            placeholder="Введите ID категории для добавления",
+            required=True,
+            max_length=20
+        )
+        self.add_item(self.category_input)
+    
+    async def callback(self, interaction: Interaction):
+        try:
+            category_id = int(self.category_input.value)
+            category = interaction.guild.get_channel(category_id)
+            
+            if not category or not isinstance(category, nextcord.CategoryChannel):
+                await interaction.response.send_message(
+                    "❌ Категория с таким ID не найдена!",
+                    ephemeral=True
+                )
+                return
+            
+            settings_manager = SettingsManager()
+            current_settings = settings_manager.get_all_settings().get("private_rooms", {})
+            allowed_categories = current_settings.get("allowed_categories", [])
+            
+            if category_id in allowed_categories:
+                await interaction.response.send_message(
+                    f"❌ Категория **{category.name}** уже находится в списке разрешенных!",
+                    ephemeral=True
+                )
+                return
+            
+            allowed_categories.append(category_id)
+            settings_manager.set_setting("private_rooms", "allowed_categories", allowed_categories)
+            
+            await interaction.response.send_message(
+                f"✅ Категория **{category.name}** добавлена в список разрешенных!",
+                ephemeral=True
+            )
+            
+        except ValueError:
+            await interaction.response.send_message(
+                "❌ ID категории должен быть числом!",
+                ephemeral=True
+            )
+        except Exception as e:
+            logger.error(f"Ошибка при добавлении категории: {str(e)}")
+            await interaction.response.send_message(
+                "❌ Произошла ошибка при добавлении категории",
+                ephemeral=True
+            )
+
+class ClearCategoriesButton(ui.Button):
+    def __init__(self):
+        super().__init__(
+            label="Очистить все",
+            style=ui.ButtonStyle.danger,
+            emoji="🗑️"
+        )
+    
+    async def callback(self, interaction: Interaction):
+        try:
+            settings_manager = SettingsManager()
+            settings_manager.set_setting("private_rooms", "allowed_categories", [])
+            
+            await interaction.response.send_message(
+                "⚠️ **Список категорий очищен!**\n"
+                "Теперь удаление приватных комнат **ЗАПРЕЩЕНО** во всех категориях!",
+                ephemeral=True
+            )
+            
+        except Exception as e:
+            logger.error(f"Ошибка при очистке категорий: {str(e)}")
+            await interaction.response.send_message(
+                "❌ Произошла ошибка при очистке категорий",
+                ephemeral=True
+            )
+
+class RefreshCategoriesButton(ui.Button):
+    def __init__(self):
+        super().__init__(
+            label="Обновить",
+            style=ui.ButtonStyle.secondary,
+            emoji="🔄"
+        )
+    
+    async def callback(self, interaction: Interaction):
+        try:
+            settings_manager = SettingsManager()
+            current_settings = settings_manager.get_all_settings().get("private_rooms", {})
+            allowed_categories = current_settings.get("allowed_categories", [])
+            
+            embed = Embed(
+                title="🔒 Управление разрешенными категориями",
+                color=Color.blue()
+            )
+            
+            if not allowed_categories:
+                embed.description = "⚠️ **Нет разрешенных категорий для удаления!**\n"
+                                   "• Приватные комнаты можно создавать в любых категориях\n"
+                                   "• Удаление приватных комнат **ЗАПРЕЩЕНО** во всех категориях"
+            else:
+                category_list = []
+                for category_id in allowed_categories:
+                    category = interaction.guild.get_channel(category_id)
+                    if category:
+                        category_list.append(f"• **{category.name}** (ID: {category_id})")
+                    else:
+                        category_list.append(f"• *Неизвестная категория* (ID: {category_id})")
+                
+                embed.description = "\n".join(category_list)
+                embed.add_field(
+                    name="Всего категорий",
+                    value=str(len(allowed_categories)),
+                    inline=True
+                )
+            
+            view = CategoriesManagementView()
+            await interaction.response.edit_message(embed=embed, view=view)
+            
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении списка категорий: {str(e)}")
+            await interaction.response.send_message(
+                "❌ Произошла ошибка при обновлении списка",
                 ephemeral=True
             ) 
