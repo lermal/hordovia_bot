@@ -479,9 +479,8 @@ class PrivateRoomsSettingsView(View):
             )
             
             if not allowed_categories:
-                embed.description = "⚠️ **Нет разрешенных категорий для удаления!**\n"
-                                   "• Приватные комнаты можно создавать в любых категориях\n"
-                                   "• Удаление приватных комнат **ЗАПРЕЩЕНО** во всех категориях"
+                embed.description = "⚠️ **Нет разрешенных категорий для удаления!**\n" \
+                                    "• Удаление приватных комнат **ЗАПРЕЩЕНО** во всех категориях"
             else:
                 category_list = []
                 for category_id in allowed_categories:
@@ -814,9 +813,9 @@ class RefreshCategoriesButton(ui.Button):
             )
             
             if not allowed_categories:
-                embed.description = "⚠️ **Нет разрешенных категорий для удаления!**\n"
-                                   "• Приватные комнаты можно создавать в любых категориях\n"
-                                   "• Удаление приватных комнат **ЗАПРЕЩЕНО** во всех категориях"
+                embed.description = "⚠️ **Нет разрешенных категорий для удаления!**\n" \
+                                    "• Приватные комнаты можно создавать в любых категориях\n" \
+                                    "• Удаление приватных комнат **ЗАПРЕЩЕНО** во всех категориях"
             else:
                 category_list = []
                 for category_id in allowed_categories:
