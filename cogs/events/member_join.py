@@ -978,99 +978,39 @@ class MemberJoinEvent(Cog):
                 return
             
             elif os.path.exists(rejected_passport_path):
-                # Пользователь возвращается с отклоненным паспортом
-                logger.info(f"Пользователь {member.id} возвращается с отклоненным паспортом")
-                
-                # Отправляем сообщение о необходимости повторной верификации
-                verification_channel = self.bot.get_channel(verification_channel_id)
-                if verification_channel:
-                    embed = Embed(
-                        title="⚠️ Повторная верификация",
-                        description=f"Пользователь {member.mention} возвращается с ранее отклоненным паспортом.\nТребуется повторная проверка.",
-                        color=Color.orange()
-                    )
-                    await verification_channel.send(embed=embed)
-                
-                # Удаляем старый отклоненный паспорт для создания нового
+                logger.info(f"Пользователь {member.id} возвращается с отклоненным паспортом — удаляем, авто-приём")
                 os.remove(rejected_passport_path)
-            
-            # Проверяем существующий пустой паспорт (защита от дублирования)
+
+            # Авто-приём: паспорт с печатью и роль хордовца без инспекторов
             view = VerificationView(self.bot, member, member_join_event=self)
-            view.setup_initial_buttons()  # Инициализируем начальные кнопки
-            if await view.check_existing_passport(member):
-                # Если check_existing_passport вернул True, значит пользователь уже обработан
-                # (кикнут за отклоненный паспорт или у него есть пустой паспорт в процессе)
+            try:
+                passport_path = await view.create_stamped_passport(member, True)
+            except Exception as e:
+                logger.error(f"Ошибка при создании паспорта с печатью для {member.id}: {e}")
                 self.processing_users.discard(member.id)
                 return
-                
-            # Создаем эмбед для верификации
-            embed = await self.create_verification_embed(member)
-            
-            # Создаем пустой паспорт в фоне (не блокируем основной поток)
-            async def create_passport_background():
+            empty_path = os.path.join(PASSPORTS_DIR, f"{member.id}_empty.png")
+            if os.path.exists(empty_path):
                 try:
-                    passport_path = await self.create_empty_passport(member)
-                    # Отправляем сообщение с паспортом в канал приветствия
-                    welcome_channel = self.bot.get_channel(welcome_channel_id)
-                    if welcome_channel:
-                        welcome_embed = Embed(
-                            title="Welcome to Hordovia!",
-                            description=f"Добро пожаловать на территорию Хордовии, товарищ {member.mention}!\nСлава Хордовии! Спасибо за борщ!",
-                            color=Color.blue()
-                        )
-                        welcome_embed.set_image(url="attachment://passport.png")
-                        passport_message = await welcome_channel.send(embed=welcome_embed, file=File(passport_path, filename="passport.png"))
-                        view.passport_message_id = passport_message.id  # Сохраняем ID сообщения
-                        logger.info(f"Создано сообщение с паспортом для {member.id}, message_id: {passport_message.id}")
-                    else:
-                        logger.warning(f"Не найден канал приветствия с ID: {welcome_channel_id}")
-                except Exception as e:
-                    logger.error(f"Ошибка при создании пустого паспорта для {member.id}: {e}")
-                    view.passport_message_id = None
-                finally:
-                    # Убираем пользователя из обработки после завершения
-                    self.processing_users.discard(member.id)
-            
-            # Запускаем создание паспорта в фоне
-            asyncio.create_task(create_passport_background())
-            
-            # Отправляем сообщение с кнопками в канал верификации (это происходит сразу)
-            verification_channel = self.bot.get_channel(verification_channel_id)
-            if verification_channel:
-                # Формируем пинг админских ролей
-                admin_pings = []
-                for role_id in admin_role_ids:
-                    role = member.guild.get_role(role_id)
-                    if role:
-                        admin_pings.append(role.mention)
-                
-                ping_text = " ".join(admin_pings) if admin_pings else ""
-                
-                content = f"{ping_text}\n**Новый пользователь ожидает верификации**" if ping_text else "**Новый пользователь ожидает верификации**"
-                
-                verification_message = await verification_channel.send(content=content, embed=embed, view=view)
-                logger.info(f"Отправлено сообщение верификации для {member.id}")
-                
-                # Обновляем кнопки после создания паспорта (в фоновой задаче)
-                async def update_buttons_after_passport():
-                    # Ждем завершения создания паспорта (максимум 30 секунд)
-                    for _ in range(30):
-                        if view.passport_message_id is not None:
-                            break
-                        await asyncio.sleep(1)
-                    
-                    # Обновляем кнопки с правильным passport_message_id
-                    try:
-                        view.setup_initial_buttons()
-                        await verification_message.edit(view=view)
-                        logger.info(f"Обновлены кнопки верификации для {member.id} с passport_message_id: {view.passport_message_id}")
-                    except Exception as e:
-                        logger.error(f"Ошибка при обновлении кнопок верификации для {member.id}: {e}")
-                
-                # Запускаем обновление кнопок в фоне
-                asyncio.create_task(update_buttons_after_passport())
-            else:
-                logger.warning(f"Не найден канал верификации с ID: {verification_channel_id}")
+                    os.remove(empty_path)
+                except Exception:
+                    pass
+            if member_role_id:
+                role = member.guild.get_role(member_role_id)
+                if role:
+                    await member.add_roles(role)
+                    logger.info(f"Выдана роль хордовца пользователю {member.id}")
+            welcome_channel = self.bot.get_channel(welcome_channel_id)
+            if welcome_channel:
+                welcome_embed = Embed(
+                    title="Welcome to Hordovia!",
+                    description=f"Добро пожаловать на территорию Хордовии, товарищ {member.mention}!\nСлава Хордовии! Спасибо за борщ!",
+                    color=Color.green()
+                )
+                welcome_embed.set_image(url="attachment://passport.png")
+                await welcome_channel.send(embed=welcome_embed, file=File(passport_path, filename="passport.png"))
+                logger.info(f"Отправлено приветствие с паспортом для {member.id}")
+            self.processing_users.discard(member.id)
         
         except Exception as e:
             logger.error(f"Ошибка при обработке присоединения пользователя {member.id}: {e}")
