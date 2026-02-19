@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import asyncio
 import nextcord
 from nextcord import Interaction, slash_command, SlashOption
 from nextcord.ext.commands import Cog
@@ -9,12 +10,58 @@ from logger import setup_logger
 
 logger = setup_logger()
 
+MAX_BATCHES_PER_CHANNEL = 20
+CONCURRENT_CHANNELS = 8
+
 def _normalize_admin_role_ids(admin_role_ids):
     if isinstance(admin_role_ids, int):
         return [admin_role_ids]
     if isinstance(admin_role_ids, list):
         return admin_role_ids
     return []
+
+async def _delete_user_messages_in_channel(channel, user_id, cutoff, semaphore):
+    async with semaphore:
+        deleted = 0
+        try:
+            if not channel.permissions_for(channel.guild.me).read_message_history or not channel.permissions_for(channel.guild.me).manage_messages:
+                return 0
+            before = None
+            for _ in range(MAX_BATCHES_PER_CHANNEL):
+                to_delete = []
+                last_seen = None
+                batch_size = 0
+                async for msg in channel.history(limit=100, after=cutoff, before=before):
+                    batch_size += 1
+                    last_seen = msg
+                    if msg.author.id == user_id:
+                        to_delete.append(msg)
+                if last_seen is None:
+                    break
+                if to_delete:
+                    if len(to_delete) == 1:
+                        try:
+                            await to_delete[0].delete()
+                            deleted += 1
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            await channel.bulk_delete(to_delete)
+                            deleted += len(to_delete)
+                        except Exception:
+                            for m in to_delete:
+                                try:
+                                    await m.delete()
+                                    deleted += 1
+                                except Exception:
+                                    pass
+                if batch_size < 100:
+                    break
+                before = last_seen
+        except Exception as e:
+            logger.warning(f"Ошибка при удалении сообщений в {channel.id}: {e}")
+        return deleted
 
 class ByeCommand(Cog):
     def __init__(self, bot: Bot):
@@ -43,44 +90,6 @@ class ByeCommand(Cog):
             await interaction.response.send_message("Команда только на сервере.", ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True)
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
-        deleted = 0
-        for channel in guild.text_channels:
-            try:
-                if not channel.permissions_for(guild.me).read_message_history or not channel.permissions_for(guild.me).manage_messages:
-                    continue
-                before = None
-                while True:
-                    to_delete = []
-                    last_seen = None
-                    async for msg in channel.history(limit=100, after=cutoff, before=before):
-                        last_seen = msg
-                        if msg.author.id == user.id:
-                            to_delete.append(msg)
-                    if last_seen is None:
-                        break
-                    if len(to_delete) == 1:
-                        try:
-                            await to_delete[0].delete()
-                            deleted += 1
-                        except Exception:
-                            pass
-                    else:
-                        try:
-                            await channel.bulk_delete(to_delete)
-                            deleted += len(to_delete)
-                        except Exception:
-                            for m in to_delete:
-                                try:
-                                    await m.delete()
-                                    deleted += 1
-                                except Exception:
-                                    pass
-                    if len(to_delete) < 100:
-                        break
-                    before = last_seen
-            except Exception as e:
-                logger.warning(f"Ошибка при удалении сообщений в {channel.id}: {e}")
         roles_to_remove = [r for r in user.roles if r != guild.default_role]
         if roles_to_remove:
             try:
@@ -94,6 +103,11 @@ class ByeCommand(Cog):
                     await user.add_roles(role)
                 except Exception as e:
                     logger.warning(f"Ошибка выдачи роли объект инс: {e}")
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        semaphore = asyncio.Semaphore(CONCURRENT_CHANNELS)
+        channels = [ch for ch in guild.text_channels if ch.permissions_for(guild.me).read_message_history and ch.permissions_for(guild.me).manage_messages]
+        results = await asyncio.gather(*[_delete_user_messages_in_channel(ch, user.id, cutoff, semaphore) for ch in channels])
+        deleted = sum(results)
         await interaction.followup.send(f"Готово. Удалено сообщений: {deleted}. Роли сняты, выдана роль объект инс.", ephemeral=True)
 
 def setup(bot: Bot):
